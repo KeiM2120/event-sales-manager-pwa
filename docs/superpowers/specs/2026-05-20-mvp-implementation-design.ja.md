@@ -65,6 +65,11 @@ Utility:
 
 TypeScriptはstrict modeを前提にし、`any` は使わない。依存関係は必要最小限にし、ドメイン処理にはできるだけ標準機能と純粋関数を使う。
 
+Deploy:
+
+- GitHub Pages
+- GitHub Actions
+
 ## プロダクト方針
 
 このMVPは、見た目の装飾よりもイベント当日の確実な操作を優先する。
@@ -356,6 +361,37 @@ expenseId,eventId,category,payee,amount,memo
 
 更新がある場合は、設定画面または共通通知領域にユーザー操作の更新ボタンを出す。会計画面の操作中に強制リロードしない。データはIndexedDBに保存され、初回読み込み後はオフラインでも利用できることを前提にする。
 
+## デプロイとCI/CD
+
+ビルド後の静的ファイルはGitHub Pagesへデプロイする。公開方式はProject Pagesとし、想定URLは次の形にする。
+
+```txt
+https://KeiM2120.github.io/event-sales-manager-pwa/
+```
+
+ViteはGitHub Pagesのサブパス配信に合わせて、`base: "/event-sales-manager-pwa/"` を設定する。PWA manifest、Service Worker、静的アセットもこのサブパス配下で正しく解決される必要がある。
+
+GitHub Actionsは、`main` ブランチへのpushで本番デプロイする。基本のCI/CDフローは次の通り。
+
+1. 依存関係を `npm ci` でインストールする。
+2. `npm run lint` を実行する。
+3. `npm run test` を実行する。
+4. `npm run build` を実行する。
+5. すべて成功した場合のみ、`dist/` をGitHub Pages artifactとしてアップロードする。
+6. GitHub公式ActionsでPagesへデプロイする。
+
+使用するActionsは公式構成を前提にする。
+
+- `actions/configure-pages`
+- `actions/upload-pages-artifact`
+- `actions/deploy-pages`
+
+`gh-pages` ブランチへpushする方式は使わない。GitHub Pagesの設定は、GitHub Actionsからデプロイする構成にする。
+
+Pull Requestを使う場合、PRではlint、test、buildのみを実行し、Pagesへのデプロイは行わない。Pagesデプロイは `main` へのpushに限定する。必要に応じて、手動再デプロイ用に `workflow_dispatch` も有効にする。
+
+PWA更新時の注意点として、`main` へpushして新しいビルドが配信されても、会計中に自動でリロードしない。既存のPWA更新方針に従い、更新通知を表示し、ユーザー操作で更新する。
+
 ## エラー処理
 
 エラーメッセージは短く、現場で判断しやすいものにする。対象の商品名と必要数が分かる表現を優先する。
@@ -391,6 +427,7 @@ IndexedDBの書き込み失敗やPWA更新失敗は、可能な範囲で再試�
 ```bash
 npm run build
 npm run lint
+npm run test
 ```
 
 テストスイートがある場合は、関連するテストも実行する。
@@ -410,3 +447,4 @@ MVPは次を満たしたら完了とする。
 - 統計はキャンセル済み売上を除外する。
 - 売上サマリー、売上明細、商品別展開、経費CSVを出力できる。
 - PWA更新通知が表示され、ユーザー操作で更新できる。
+- `main` へのpushでGitHub Actionsがlint、test、buildを実行し、成功時のみGitHub Pagesへデプロイできる。
