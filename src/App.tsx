@@ -1,11 +1,21 @@
+import { useState } from "react";
+import { AppShell, type AppScreen } from "./components/AppShell";
+
+const screenTitles: Record<AppScreen, string> = {
+  home: "ホーム",
+  checkout: "会計",
+  stats: "統計",
+  management: "管理",
+  settings: "設定",
+};
+
 function App() {
+  const [screen, setScreen] = useState<AppScreen>("home");
+
   return (
-    <main className="min-h-screen bg-slate-50 p-4 text-slate-950">
-      <h1 className="text-2xl font-bold">Event Sales Manager</h1>
-      <p className="mt-2 text-sm text-slate-700">
-        React PWA scaffold is ready.
-      </p>
-    </main>
+    <AppShell current={screen} onNavigate={setScreen}>
+      <h1 className="text-2xl font-bold">{screenTitles[screen]}</h1>
+    </AppShell>
   );
 }
 
