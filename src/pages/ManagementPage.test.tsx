@@ -54,8 +54,11 @@ describe("ManagementPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "イベント" }));
     await userEvent.type(screen.getByLabelText("イベント名"), "コミックマーケット");
     await userEvent.type(screen.getByLabelText("開催日"), "2026-08-16");
+    await userEvent.type(screen.getByLabelText("サークルスペース"), "東A-01a");
     await userEvent.click(screen.getByRole("button", { name: "イベントを追加" }));
-    expect(await screen.findByText("コミックマーケット / 2026-08-16")).toBeInTheDocument();
+    expect(
+      await screen.findByText("コミックマーケット / 2026-08-16 / 東A-01a"),
+    ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "在庫" }));
     await userEvent.clear(screen.getByLabelText("初期在庫"));
@@ -103,6 +106,9 @@ describe("ManagementPage", () => {
     await expect(database.eventInventories.count()).resolves.toBe(1);
     await expect(database.expenses.count()).resolves.toBe(1);
     await expect(database.bundles.count()).resolves.toBe(1);
+    await expect(database.events.toArray()).resolves.toMatchObject([
+      { circleSpace: "東A-01a" },
+    ]);
     await expect(database.eventInventories.toArray()).resolves.toMatchObject([
       { reservationMemo: "田中さん" },
     ]);

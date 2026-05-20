@@ -14,6 +14,7 @@ export interface Event {
   name: string;
   eventDate: string;
   series: Series;
+  circleSpace?: string;
   memo?: string;
 }
 

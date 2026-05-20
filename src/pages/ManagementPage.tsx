@@ -178,6 +178,7 @@ function EventsPanel({
   const [name, setName] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [series, setSeries] = useState<Series>("comic-market");
+  const [circleSpace, setCircleSpace] = useState("");
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -190,9 +191,11 @@ function EventsPanel({
       name: name.trim(),
       eventDate,
       series,
+      ...(circleSpace.trim() ? { circleSpace: circleSpace.trim() } : {}),
     });
     setName("");
     setEventDate("");
+    setCircleSpace("");
   }
 
   return (
@@ -212,13 +215,20 @@ function EventsPanel({
           options={seriesOptions}
           onChange={(value) => setSeries(value as Series)}
         />
+        <TextField
+          label="サークルスペース"
+          value={circleSpace}
+          onChange={setCircleSpace}
+        />
         <SubmitButton label="イベントを追加" />
       </form>
       <List
         emptyText="イベントはまだありません。"
         items={events.map((item) => ({
           id: item.id,
-          label: `${item.name} / ${item.eventDate}`,
+          label: [item.name, item.eventDate, item.circleSpace]
+            .filter(Boolean)
+            .join(" / "),
         }))}
       />
     </section>
