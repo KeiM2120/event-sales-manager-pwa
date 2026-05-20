@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { AppShell, type AppScreen } from "./components/AppShell";
+import { HomePage } from "./pages/HomePage";
+import { ManagementPage } from "./pages/ManagementPage";
 
 const screenTitles: Record<AppScreen, string> = {
   home: "ホーム",
@@ -14,7 +16,11 @@ function App() {
 
   return (
     <AppShell current={screen} onNavigate={setScreen}>
-      <h1 className="text-2xl font-bold">{screenTitles[screen]}</h1>
+      {screen === "home" && <HomePage onNavigate={setScreen} />}
+      {screen === "management" && <ManagementPage />}
+      {screen !== "home" && screen !== "management" && (
+        <h1 className="text-2xl font-bold">{screenTitles[screen]}</h1>
+      )}
     </AppShell>
   );
 }
