@@ -76,6 +76,27 @@ export interface Sale {
   lines: SaleLine[];
 }
 
+export type CheckoutLineComponent = SaleLineComponent;
+
+export interface CheckoutLine {
+  lineId: string;
+  kind: SaleLineKind;
+  refId: string;
+  displayName: string;
+  productGenre: ProductGenre;
+  unitPrice: number;
+  quantity: number;
+  subtotal: number;
+  components?: CheckoutLineComponent[];
+}
+
+export interface CheckoutState {
+  eventId: string;
+  lines: CheckoutLine[];
+  totalQuantity: number;
+  totalAmount: number;
+}
+
 export interface Expense {
   id: string;
   eventId: string;
