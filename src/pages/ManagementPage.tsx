@@ -286,10 +286,10 @@ function EventList({
         return (
           <li
             key={event.id}
-            className="grid gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]"
+            className="grid items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]"
           >
-            <span>{label}</span>
-            <span className="grid grid-cols-2 gap-2">
+            <span className="flex items-center">{label}</span>
+            <span className="grid grid-cols-2 items-center gap-2">
               <button
                 type="button"
                 className="min-h-10 rounded-md border border-slate-300 bg-white px-3 font-bold text-slate-800"
