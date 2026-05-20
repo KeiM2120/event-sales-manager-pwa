@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CheckoutPage } from "./CheckoutPage";
 
 describe("CheckoutPage", () => {
@@ -62,8 +62,27 @@ describe("CheckoutPage", () => {
 
     expect(checkoutDetails).toHaveClass("fixed");
     expect(checkoutDetails).toHaveClass("bottom-20");
-    expect(checkoutDetails).toHaveClass("h-[20vh]");
+    expect(checkoutDetails).toHaveClass("h-[30vh]");
     expect(checkoutDetailLines).toHaveClass("overflow-y-auto");
+    expect(checkoutDetailLines).toHaveClass("mt-1");
+    expect(checkoutDetailLines).toHaveClass("space-y-1");
     expect(checkoutDetailLines).toHaveTextContent("新刊 x1");
+    expect(screen.getByText("新刊 x1").closest("li")).toHaveClass("py-1");
+  });
+
+  it("scrolls checkout details to the bottom when an item is added", async () => {
+    const scrollTo = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
+    });
+
+    render(<CheckoutPage eventId="event-1" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
+
+    await waitFor(() => {
+      expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
+    });
   });
 });
