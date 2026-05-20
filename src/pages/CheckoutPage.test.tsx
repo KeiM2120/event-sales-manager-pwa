@@ -12,4 +12,15 @@ describe("CheckoutPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "新刊を減らす" }));
     expect(screen.queryByText("新刊 x1")).not.toBeInTheDocument();
   });
+
+  it("keeps clear undo and confirm actions fixed at the bottom", () => {
+    render(<CheckoutPage eventId="event-1" />);
+
+    const checkoutActions = screen.getByRole("group", { name: "会計操作" });
+    expect(checkoutActions).toHaveClass("fixed");
+    expect(checkoutActions).toHaveClass("bottom-0");
+    expect(checkoutActions).toHaveTextContent("クリア");
+    expect(checkoutActions).toHaveTextContent("Undo");
+    expect(checkoutActions).toHaveTextContent("確定 0円");
+  });
 });

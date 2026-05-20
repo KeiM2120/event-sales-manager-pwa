@@ -26,7 +26,7 @@ export function CheckoutPage({ eventId }: { eventId: string }) {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       <h1 className="text-2xl font-bold">会計</h1>
       <div className="grid grid-cols-2 gap-3">
         {demoItems.map((item) => (
@@ -66,23 +66,29 @@ export function CheckoutPage({ eventId }: { eventId: string }) {
           ))}
         </div>
       </section>
-      <div className="grid grid-cols-3 gap-2">
-        <button
-          type="button"
-          className="min-h-16 rounded-md border bg-white font-bold"
-          onClick={() => dispatch({ type: "clear" })}
-        >
-          クリア
-        </button>
-        <button type="button" className="min-h-16 rounded-md border bg-white font-bold">
-          Undo
-        </button>
-        <button
-          type="button"
-          className="min-h-16 rounded-md bg-emerald-700 font-bold text-white"
-        >
-          確定 {state.totalAmount}円
-        </button>
+      <div
+        role="group"
+        aria-label="会計操作"
+        className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 p-2 backdrop-blur"
+      >
+        <div className="mx-auto grid max-w-3xl grid-cols-3 gap-2">
+          <button
+            type="button"
+            className="min-h-16 rounded-md border bg-white font-bold"
+            onClick={() => dispatch({ type: "clear" })}
+          >
+            クリア
+          </button>
+          <button type="button" className="min-h-16 rounded-md border bg-white font-bold">
+            Undo
+          </button>
+          <button
+            type="button"
+            className="min-h-16 rounded-md bg-emerald-700 font-bold text-white"
+          >
+            確定 {state.totalAmount}円
+          </button>
+        </div>
       </div>
     </div>
   );
