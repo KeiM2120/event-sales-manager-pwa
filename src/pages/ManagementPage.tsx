@@ -20,6 +20,12 @@ interface ManagementPageProps {
   database?: EventSalesDatabase;
 }
 
+interface BundleComponentDraft {
+  id: string;
+  productId: string;
+  quantity: number;
+}
+
 const sections: Array<{ value: ManagementSection; label: string }> = [
   { value: "events", label: "イベント" },
   { value: "products", label: "商品" },
@@ -383,9 +389,38 @@ function BundlesPanel({
 }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
-  const [productId, setProductId] = useState("");
-  const [componentQuantity, setComponentQuantity] = useState(1);
-  const selectedProductId = productId || (products[0]?.id ?? "");
+  const [components, setComponents] = useState<BundleComponentDraft[]>(() => [
+    createBundleComponentDraft(),
+  ]);
+
+  function updateComponentProduct(id: string, productId: string) {
+    setComponents((currentComponents) =>
+      currentComponents.map((component) =>
+        component.id === id ? { ...component, productId } : component,
+      ),
+    );
+  }
+
+  function updateComponentQuantity(id: string, quantity: number) {
+    setComponents((currentComponents) =>
+      currentComponents.map((component) =>
+        component.id === id ? { ...component, quantity } : component,
+      ),
+    );
+  }
+
+  function addComponent() {
+    setComponents((currentComponents) => [
+      ...currentComponents,
+      createBundleComponentDraft(),
+    ]);
+  }
+
+  function removeComponent(id: string) {
+    setComponents((currentComponents) =>
+      currentComponents.filter((component) => component.id !== id),
+    );
+  }
 
   async function addBundle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -394,6 +429,18 @@ function BundlesPanel({
     }
 
     const bundleId = createId("bundle");
+    const fallbackProductId = products[0]?.id ?? "";
+    const componentQuantities = new Map<string, number>();
+    for (const component of components) {
+      const productId = component.productId || fallbackProductId;
+      if (productId) {
+        componentQuantities.set(
+          productId,
+          (componentQuantities.get(productId) ?? 0) + component.quantity,
+        );
+      }
+    }
+
     await database.transaction("rw", database.bundles, database.bundleItems, async () => {
       await database.bundles.add({
         id: bundleId,
@@ -402,17 +449,17 @@ function BundlesPanel({
         isActive: true,
       });
 
-      if (selectedProductId) {
+      for (const [productId, quantity] of componentQuantities) {
         await database.bundleItems.add({
           bundleId,
-          productId: selectedProductId,
-          quantity: componentQuantity,
+          productId,
+          quantity,
         });
       }
     });
     setName("");
     setPrice(0);
-    setComponentQuantity(1);
+    setComponents([createBundleComponentDraft()]);
   }
 
   return (
@@ -421,32 +468,73 @@ function BundlesPanel({
       <form className="grid gap-3" onSubmit={addBundle}>
         <TextField label="セット名" value={name} onChange={setName} />
         <NumberInput label="セット価格" value={price} onChange={setPrice} />
-        <SelectField
-          label="構成商品"
-          value={selectedProductId}
-          options={products.map((item) => ({ value: item.id, label: item.name }))}
-          onChange={setProductId}
-        />
-        <NumberInput
-          label="構成数量"
-          value={componentQuantity}
-          onChange={setComponentQuantity}
-        />
+        <div className="space-y-2" aria-label="構成商品一覧">
+          {components.map((component, index) => {
+            const rowNumber = index + 1;
+            const selectedProductId = component.productId || (products[0]?.id ?? "");
+
+            return (
+              <div
+                key={component.id}
+                className="grid gap-2 rounded-md bg-slate-100 p-3"
+              >
+                <SelectField
+                  label={`構成商品${rowNumber}`}
+                  value={selectedProductId}
+                  options={products.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  }))}
+                  onChange={(productId) =>
+                    updateComponentProduct(component.id, productId)
+                  }
+                />
+                <NumberInput
+                  label={`構成数量${rowNumber}`}
+                  value={component.quantity}
+                  onChange={(quantity) =>
+                    updateComponentQuantity(component.id, quantity)
+                  }
+                />
+                {components.length > 1 && (
+                  <button
+                    type="button"
+                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700"
+                    onClick={() => removeComponent(component.id)}
+                  >
+                    構成商品{rowNumber}を取り消し
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800"
+            onClick={addComponent}
+          >
+            構成商品を追加
+          </button>
+        </div>
         <SubmitButton label="セットを追加" />
       </form>
       <List
         emptyText="セットはまだありません。"
         items={bundles.map((bundle) => {
-          const componentItem = bundleItems.find(
-            (item) => item.bundleId === bundle.id,
-          );
-          const component = products.find(
-            (item) => item.id === componentItem?.productId,
-          );
+          const componentLabels = bundleItems
+            .filter((item) => item.bundleId === bundle.id)
+            .map((componentItem) => {
+              const componentName =
+                products.find((item) => item.id === componentItem.productId)?.name ??
+                componentItem.productId;
+
+              return `${componentName} x${componentItem.quantity}`;
+            });
+
           return {
             id: bundle.id,
-            label: component && componentItem
-              ? `${bundle.name} / ${bundle.price}円 / ${component.name} x${componentItem.quantity}`
+            label: componentLabels.length > 0
+              ? `${bundle.name} / ${bundle.price}円 / ${componentLabels.join(", ")}`
               : `${bundle.name} / ${bundle.price}円`,
           };
         })}
@@ -567,4 +655,12 @@ function List({
 
 function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function createBundleComponentDraft(): BundleComponentDraft {
+  return {
+    id: createId("bundle-component"),
+    productId: "",
+    quantity: 1,
+  };
 }
