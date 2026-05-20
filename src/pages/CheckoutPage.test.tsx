@@ -20,6 +20,28 @@ describe("CheckoutPage", () => {
     expect(screen.queryByText("新刊 x1")).not.toBeInTheDocument();
   });
 
+  it("includes existing books, goods, and their reservation test items", async () => {
+    render(<CheckoutPage eventId="event-1" />);
+
+    const itemNames = ["既刊A", "既刊B", "グッズA", "グッズB"];
+    for (const itemName of itemNames) {
+      expect(
+        screen.getByRole("button", { name: `${itemName}を追加` }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: `取り置き ${itemName}を追加` }),
+      ).toBeInTheDocument();
+    }
+
+    await userEvent.click(screen.getByRole("button", { name: "既刊Aを追加" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "取り置き グッズBを増やす" }),
+    );
+
+    expect(screen.getByText("既刊A x1")).toBeInTheDocument();
+    expect(screen.getByText("取り置き グッズB x1")).toBeInTheDocument();
+  });
+
   it("keeps clear undo and confirm actions fixed at the bottom", () => {
     render(<CheckoutPage eventId="event-1" />);
 

@@ -1,22 +1,50 @@
 import { useReducer } from "react";
 import { checkoutReducer, createInitialCheckoutState } from "../reducers/checkoutReducer";
 
-const demoItems = [
+const demoProducts = [
   {
-    kind: "product" as const,
     refId: "book",
     displayName: "新刊",
     productGenre: "book" as const,
     unitPrice: 1000,
   },
   {
-    kind: "reservation" as const,
-    refId: "book",
-    displayName: "取り置き 新刊",
+    refId: "existing-book-a",
+    displayName: "既刊A",
     productGenre: "book" as const,
-    unitPrice: 1000,
+    unitPrice: 800,
+  },
+  {
+    refId: "existing-book-b",
+    displayName: "既刊B",
+    productGenre: "book" as const,
+    unitPrice: 700,
+  },
+  {
+    refId: "goods-a",
+    displayName: "グッズA",
+    productGenre: "goods" as const,
+    unitPrice: 500,
+  },
+  {
+    refId: "goods-b",
+    displayName: "グッズB",
+    productGenre: "goods" as const,
+    unitPrice: 300,
   },
 ];
+
+const demoItems = demoProducts.flatMap((product) => [
+  {
+    ...product,
+    kind: "product" as const,
+  },
+  {
+    ...product,
+    kind: "reservation" as const,
+    displayName: `取り置き ${product.displayName}`,
+  },
+]);
 
 export function CheckoutPage({ eventId }: { eventId: string }) {
   const [state, dispatch] = useReducer(
