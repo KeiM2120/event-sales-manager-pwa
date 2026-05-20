@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EventSalesDatabase } from "../db/database";
@@ -13,6 +13,7 @@ describe("ManagementPage", () => {
   });
 
   afterEach(async () => {
+    cleanup();
     await database.delete();
     database.close();
   });
@@ -22,6 +23,13 @@ describe("ManagementPage", () => {
 
     expect(screen.getByRole("heading", { name: "管理" })).toBeInTheDocument();
     await screen.findByText("商品はまだありません。");
+    expect(screen.getAllByRole("button").slice(0, 5).map((button) => button.textContent)).toEqual([
+      "イベント",
+      "商品",
+      "セット",
+      "在庫",
+      "経費",
+    ]);
     await userEvent.click(screen.getByRole("button", { name: "在庫" }));
     expect(
       screen.getByRole("button", { name: "在庫を追加" }),

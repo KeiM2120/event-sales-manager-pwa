@@ -21,10 +21,10 @@ interface ManagementPageProps {
 }
 
 const sections: Array<{ value: ManagementSection; label: string }> = [
+  { value: "events", label: "イベント" },
   { value: "products", label: "商品" },
   { value: "bundles", label: "セット" },
   { value: "inventory", label: "在庫" },
-  { value: "events", label: "イベント" },
   { value: "expenses", label: "経費" },
 ];
 
