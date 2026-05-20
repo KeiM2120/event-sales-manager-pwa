@@ -18,9 +18,12 @@ const navigationItems: Array<{ screen: AppScreen; label: string }> = [
 
 export function AppShell({ current, onNavigate, children }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-slate-100 pb-20 text-slate-950">
+    <div className="min-h-screen bg-slate-100 pt-20 text-slate-950">
       <main className="mx-auto min-h-screen w-full max-w-3xl p-4">{children}</main>
-      <nav className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white">
+      <nav
+        aria-label="画面切り替え"
+        className="fixed inset-x-0 top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur"
+      >
         <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1 p-2">
           {navigationItems.map((item) => (
             <button
