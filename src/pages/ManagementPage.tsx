@@ -26,6 +26,11 @@ interface BundleComponentDraft {
   quantity: number;
 }
 
+interface InventoryDraftKey {
+  eventId: string;
+  productId: string;
+}
+
 const sections: Array<{ value: ManagementSection; label: string }> = [
   { value: "events", label: "イベント" },
   { value: "products", label: "商品" },
@@ -125,6 +130,7 @@ function ProductsPanel({
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
   const [productGenre, setProductGenre] = useState<ProductGenre>("book");
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
   async function addProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -132,15 +138,36 @@ function ProductsPanel({
       return;
     }
 
-    await database.products.add({
-      id: createId("product"),
+    await database.products.put({
+      id: editingProductId ?? createId("product"),
       name: name.trim(),
       productGenre,
       defaultPrice: price,
       isActive: true,
     });
+    resetProductForm();
+  }
+
+  function startEditingProduct(product: Product) {
+    setEditingProductId(product.id);
+    setName(product.name);
+    setPrice(product.defaultPrice);
+    setProductGenre(product.productGenre);
+  }
+
+  function resetProductForm() {
+    setEditingProductId(null);
     setName("");
     setPrice(0);
+    setProductGenre("book");
+  }
+
+  async function deleteProduct(productId: string) {
+    if (editingProductId === productId) {
+      resetProductForm();
+    }
+
+    await database.products.delete(productId);
   }
 
   return (
@@ -155,13 +182,26 @@ function ProductsPanel({
           options={productGenres}
           onChange={(value) => setProductGenre(value as ProductGenre)}
         />
-        <SubmitButton label="商品を追加" />
+        <SubmitButton label={editingProductId ? "商品を更新" : "商品を追加"} />
+        {editingProductId && (
+          <button
+            type="button"
+            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
+            onClick={resetProductForm}
+          >
+            編集をキャンセル
+          </button>
+        )}
       </form>
-      <List
+      <ActionList
         emptyText="商品はまだありません。"
         items={products.map((product) => ({
           id: product.id,
           label: `${product.name} / ${product.defaultPrice}円`,
+          editLabel: `${product.name}を編集`,
+          deleteLabel: `${product.name}を削除`,
+          onEdit: () => startEditingProduct(product),
+          onDelete: () => deleteProduct(product.id),
         }))}
       />
     </section>
@@ -254,63 +294,24 @@ function EventsPanel({
           </button>
         )}
       </form>
-      <EventList
-        events={events}
-        onDelete={deleteEvent}
-        onEdit={startEditingEvent}
+      <ActionList
+        emptyText="イベントはまだありません。"
+        items={events.map((event) => {
+          const label = [event.name, event.eventDate, event.circleSpace]
+            .filter(Boolean)
+            .join(" / ");
+
+          return {
+            id: event.id,
+            label,
+            editLabel: `${event.name}を編集`,
+            deleteLabel: `${event.name}を削除`,
+            onEdit: () => startEditingEvent(event),
+            onDelete: () => deleteEvent(event.id),
+          };
+        })}
       />
     </section>
-  );
-}
-
-function EventList({
-  events,
-  onDelete,
-  onEdit,
-}: {
-  events: Event[];
-  onDelete: (eventId: string) => void;
-  onEdit: (event: Event) => void;
-}) {
-  if (events.length === 0) {
-    return <p className="text-sm text-slate-600">イベントはまだありません。</p>;
-  }
-
-  return (
-    <ul className="space-y-2">
-      {events.map((event) => {
-        const label = [event.name, event.eventDate, event.circleSpace]
-          .filter(Boolean)
-          .join(" / ");
-
-        return (
-          <li
-            key={event.id}
-            className="grid items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]"
-          >
-            <span className="flex items-center">{label}</span>
-            <span className="grid grid-cols-2 items-center gap-2">
-              <button
-                type="button"
-                className="min-h-10 rounded-md border border-slate-300 bg-white px-3 font-bold text-slate-800"
-                aria-label={`${event.name}を編集`}
-                onClick={() => onEdit(event)}
-              >
-                編集
-              </button>
-              <button
-                type="button"
-                className="min-h-10 rounded-md border border-red-200 bg-white px-3 font-bold text-red-700"
-                aria-label={`${event.name}を削除`}
-                onClick={() => onDelete(event.id)}
-              >
-                削除
-              </button>
-            </span>
-          </li>
-        );
-      })}
-    </ul>
   );
 }
 
@@ -330,6 +331,8 @@ function InventoryPanel({
   const [initialStock, setInitialStock] = useState(0);
   const [reservedStock, setReservedStock] = useState(0);
   const [reservationMemo, setReservationMemo] = useState("");
+  const [editingInventoryKey, setEditingInventoryKey] =
+    useState<InventoryDraftKey | null>(null);
 
   const selectedEventId = eventId || (events[0]?.id ?? "");
   const selectedProductId = productId || (products[0]?.id ?? "");
@@ -340,6 +343,17 @@ function InventoryPanel({
       return;
     }
 
+    if (
+      editingInventoryKey &&
+      (editingInventoryKey.eventId !== selectedEventId ||
+        editingInventoryKey.productId !== selectedProductId)
+    ) {
+      await database.eventInventories.delete([
+        editingInventoryKey.eventId,
+        editingInventoryKey.productId,
+      ]);
+    }
+
     await database.eventInventories.put({
       eventId: selectedEventId,
       productId: selectedProductId,
@@ -347,9 +361,39 @@ function InventoryPanel({
       reservedStock,
       ...(reservationMemo.trim() ? { reservationMemo: reservationMemo.trim() } : {}),
     });
+    resetInventoryForm();
+  }
+
+  function startEditingInventory(inventory: EventInventory) {
+    setEditingInventoryKey({
+      eventId: inventory.eventId,
+      productId: inventory.productId,
+    });
+    setEventId(inventory.eventId);
+    setProductId(inventory.productId);
+    setInitialStock(inventory.initialStock);
+    setReservedStock(inventory.reservedStock);
+    setReservationMemo(inventory.reservationMemo ?? "");
+  }
+
+  function resetInventoryForm() {
+    setEditingInventoryKey(null);
+    setEventId("");
+    setProductId("");
     setInitialStock(0);
     setReservedStock(0);
     setReservationMemo("");
+  }
+
+  async function deleteInventory(inventory: EventInventory) {
+    if (
+      editingInventoryKey?.eventId === inventory.eventId &&
+      editingInventoryKey.productId === inventory.productId
+    ) {
+      resetInventoryForm();
+    }
+
+    await database.eventInventories.delete([inventory.eventId, inventory.productId]);
   }
 
   return (
@@ -375,9 +419,18 @@ function InventoryPanel({
           value={reservationMemo}
           onChange={setReservationMemo}
         />
-        <SubmitButton label="在庫を追加" />
+        <SubmitButton label={editingInventoryKey ? "在庫を更新" : "在庫を追加"} />
+        {editingInventoryKey && (
+          <button
+            type="button"
+            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
+            onClick={resetInventoryForm}
+          >
+            編集をキャンセル
+          </button>
+        )}
       </form>
-      <List
+      <ActionList
         emptyText="在庫はまだありません。"
         items={inventories.map((inventory) => {
           const eventName =
@@ -395,6 +448,10 @@ function InventoryPanel({
             ]
               .filter(Boolean)
               .join(" / "),
+            editLabel: `${eventName}の在庫を編集`,
+            deleteLabel: `${eventName}の在庫を削除`,
+            onEdit: () => startEditingInventory(inventory),
+            onDelete: () => deleteInventory(inventory),
           };
         })}
       />
@@ -415,6 +472,7 @@ function ExpensesPanel({
   const [category, setCategory] = useState<ExpenseCategory>("printing");
   const [payee, setPayee] = useState("");
   const [amount, setAmount] = useState(0);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const selectedEventId = eventId || (events[0]?.id ?? "");
 
   async function addExpense(event: FormEvent<HTMLFormElement>) {
@@ -423,15 +481,38 @@ function ExpensesPanel({
       return;
     }
 
-    await database.expenses.add({
-      id: createId("expense"),
+    await database.expenses.put({
+      id: editingExpenseId ?? createId("expense"),
       eventId: selectedEventId,
       category,
       payee: payee.trim(),
       amount,
     });
+    resetExpenseForm();
+  }
+
+  function startEditingExpense(expense: Expense) {
+    setEditingExpenseId(expense.id);
+    setEventId(expense.eventId);
+    setCategory(expense.category);
+    setPayee(expense.payee);
+    setAmount(expense.amount);
+  }
+
+  function resetExpenseForm() {
+    setEditingExpenseId(null);
+    setEventId("");
+    setCategory("printing");
     setPayee("");
     setAmount(0);
+  }
+
+  async function deleteExpense(expenseId: string) {
+    if (editingExpenseId === expenseId) {
+      resetExpenseForm();
+    }
+
+    await database.expenses.delete(expenseId);
   }
 
   return (
@@ -452,13 +533,26 @@ function ExpensesPanel({
         />
         <TextField label="支払先" value={payee} onChange={setPayee} />
         <NumberInput label="金額" value={amount} onChange={setAmount} />
-        <SubmitButton label="経費を追加" />
+        <SubmitButton label={editingExpenseId ? "経費を更新" : "経費を追加"} />
+        {editingExpenseId && (
+          <button
+            type="button"
+            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
+            onClick={resetExpenseForm}
+          >
+            編集をキャンセル
+          </button>
+        )}
       </form>
-      <List
+      <ActionList
         emptyText="経費はまだありません。"
         items={expenses.map((expense) => ({
           id: expense.id,
           label: `${expense.payee} / ${expense.amount}円`,
+          editLabel: `${expense.payee}を編集`,
+          deleteLabel: `${expense.payee}を削除`,
+          onEdit: () => startEditingExpense(expense),
+          onDelete: () => deleteExpense(expense.id),
         }))}
       />
     </section>
@@ -481,6 +575,7 @@ function BundlesPanel({
   const [components, setComponents] = useState<BundleComponentDraft[]>(() => [
     createBundleComponentDraft(),
   ]);
+  const [editingBundleId, setEditingBundleId] = useState<string | null>(null);
 
   function updateComponentProduct(id: string, productId: string) {
     setComponents((currentComponents) =>
@@ -517,7 +612,7 @@ function BundlesPanel({
       return;
     }
 
-    const bundleId = createId("bundle");
+    const bundleId = editingBundleId ?? createId("bundle");
     const fallbackProductId = products[0]?.id ?? "";
     const componentQuantities = new Map<string, number>();
     for (const component of components) {
@@ -531,12 +626,16 @@ function BundlesPanel({
     }
 
     await database.transaction("rw", database.bundles, database.bundleItems, async () => {
-      await database.bundles.add({
+      await database.bundles.put({
         id: bundleId,
         name: name.trim(),
         price,
         isActive: true,
       });
+
+      if (editingBundleId) {
+        await database.bundleItems.where("bundleId").equals(bundleId).delete();
+      }
 
       for (const [productId, quantity] of componentQuantities) {
         await database.bundleItems.add({
@@ -546,9 +645,42 @@ function BundlesPanel({
         });
       }
     });
+    resetBundleForm();
+  }
+
+  function startEditingBundle(bundle: Bundle) {
+    const bundleComponents = bundleItems
+      .filter((item) => item.bundleId === bundle.id)
+      .map((item) => ({
+        id: createBundleComponentDraft().id,
+        productId: item.productId,
+        quantity: item.quantity,
+      }));
+
+    setEditingBundleId(bundle.id);
+    setName(bundle.name);
+    setPrice(bundle.price);
+    setComponents(
+      bundleComponents.length > 0 ? bundleComponents : [createBundleComponentDraft()],
+    );
+  }
+
+  function resetBundleForm() {
+    setEditingBundleId(null);
     setName("");
     setPrice(0);
     setComponents([createBundleComponentDraft()]);
+  }
+
+  async function deleteBundle(bundleId: string) {
+    if (editingBundleId === bundleId) {
+      resetBundleForm();
+    }
+
+    await database.transaction("rw", database.bundles, database.bundleItems, async () => {
+      await database.bundleItems.where("bundleId").equals(bundleId).delete();
+      await database.bundles.delete(bundleId);
+    });
   }
 
   return (
@@ -605,9 +737,18 @@ function BundlesPanel({
             構成商品を追加
           </button>
         </div>
-        <SubmitButton label="セットを追加" />
+        <SubmitButton label={editingBundleId ? "セットを更新" : "セットを追加"} />
+        {editingBundleId && (
+          <button
+            type="button"
+            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
+            onClick={resetBundleForm}
+          >
+            編集をキャンセル
+          </button>
+        )}
       </form>
-      <List
+      <ActionList
         emptyText="セットはまだありません。"
         items={bundles.map((bundle) => {
           const componentLabels = bundleItems
@@ -625,6 +766,10 @@ function BundlesPanel({
             label: componentLabels.length > 0
               ? `${bundle.name} / ${bundle.price}円 / ${componentLabels.join(", ")}`
               : `${bundle.name} / ${bundle.price}円`,
+            editLabel: `${bundle.name}を編集`,
+            deleteLabel: `${bundle.name}を削除`,
+            onEdit: () => startEditingBundle(bundle),
+            onDelete: () => deleteBundle(bundle.id),
           };
         })}
       />
@@ -720,12 +865,19 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-function List({
+function ActionList({
   emptyText,
   items,
 }: {
   emptyText: string;
-  items: Array<{ id: string; label: string }>;
+  items: Array<{
+    id: string;
+    label: string;
+    editLabel: string;
+    deleteLabel: string;
+    onEdit: () => void;
+    onDelete: () => void;
+  }>;
 }) {
   if (items.length === 0) {
     return <p className="text-sm text-slate-600">{emptyText}</p>;
@@ -734,8 +886,29 @@ function List({
   return (
     <ul className="space-y-2">
       {items.map((item) => (
-        <li key={item.id} className="rounded-md bg-slate-100 px-3 py-2 text-sm">
-          {item.label}
+        <li
+          key={item.id}
+          className="grid items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]"
+        >
+          <span className="flex items-center">{item.label}</span>
+          <span className="grid grid-cols-2 items-center gap-2">
+            <button
+              type="button"
+              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 font-bold text-slate-800"
+              aria-label={item.editLabel}
+              onClick={item.onEdit}
+            >
+              編集
+            </button>
+            <button
+              type="button"
+              className="min-h-10 rounded-md border border-red-200 bg-white px-3 font-bold text-red-700"
+              aria-label={item.deleteLabel}
+              onClick={item.onDelete}
+            >
+              削除
+            </button>
+          </span>
         </li>
       ))}
     </ul>
