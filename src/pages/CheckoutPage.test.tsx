@@ -4,10 +4,17 @@ import { describe, expect, it } from "vitest";
 import { CheckoutPage } from "./CheckoutPage";
 
 describe("CheckoutPage", () => {
-  it("adds a product and removes it by decrementing to zero", async () => {
+  it("shows product items in one column with row and plus minus controls", async () => {
     render(<CheckoutPage eventId="event-1" />);
 
-    await userEvent.click(screen.getByRole("button", { name: "新刊 1000円" }));
+    const productList = screen.getByRole("list", { name: "商品一覧" });
+    expect(productList).toHaveClass("grid-cols-1");
+
+    await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
+    expect(screen.getByText("新刊 x1")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "新刊を増やす" }));
+    expect(screen.getByText("新刊 x2")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "新刊を減らす" }));
     expect(screen.getByText("新刊 x1")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "新刊を減らす" }));
     expect(screen.queryByText("新刊 x1")).not.toBeInTheDocument();
