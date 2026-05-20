@@ -30,4 +30,18 @@ describe("CheckoutPage", () => {
     expect(checkoutActions).toHaveTextContent("Undo");
     expect(checkoutActions).toHaveTextContent("確定 0円");
   });
+
+  it("pins checkout details above the bottom actions with an internal scroll area", async () => {
+    render(<CheckoutPage eventId="event-1" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
+    const checkoutDetails = screen.getByRole("region", { name: "会計内容" });
+    const checkoutDetailLines = screen.getByRole("list", { name: "会計明細" });
+
+    expect(checkoutDetails).toHaveClass("fixed");
+    expect(checkoutDetails).toHaveClass("bottom-20");
+    expect(checkoutDetails).toHaveClass("h-[20vh]");
+    expect(checkoutDetailLines).toHaveClass("overflow-y-auto");
+    expect(checkoutDetailLines).toHaveTextContent("新刊 x1");
+  });
 });

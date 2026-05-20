@@ -26,7 +26,7 @@ export function CheckoutPage({ eventId }: { eventId: string }) {
   );
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-4 pb-[calc(20vh+6rem)]">
       <h1 className="text-2xl font-bold">会計</h1>
       <ul aria-label="商品一覧" className="grid grid-cols-1 gap-3">
         {demoItems.map((item) => (
@@ -67,11 +67,14 @@ export function CheckoutPage({ eventId }: { eventId: string }) {
           </li>
         ))}
       </ul>
-      <section className="rounded-md border border-slate-200 bg-white p-4">
+      <section
+        aria-label="会計内容"
+        className="fixed inset-x-0 bottom-20 z-10 mx-auto flex h-[20vh] max-w-3xl flex-col border-t border-slate-200 bg-white p-4 shadow-lg"
+      >
         <h2 className="font-bold">会計内容</h2>
-        <div className="mt-3 space-y-2">
+        <ul aria-label="会計明細" className="mt-3 flex-1 space-y-2 overflow-y-auto">
           {state.lines.map((line) => (
-            <div key={line.lineId} className="flex items-center justify-between gap-3">
+            <li key={line.lineId} className="flex items-center justify-between gap-3">
               <span>
                 {line.displayName} x{line.quantity}
               </span>
@@ -85,9 +88,9 @@ export function CheckoutPage({ eventId }: { eventId: string }) {
               >
                 -
               </button>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
       <div
         role="group"
