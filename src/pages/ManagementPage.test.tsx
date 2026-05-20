@@ -59,6 +59,25 @@ describe("ManagementPage", () => {
     expect(
       await screen.findByText("コミックマーケット / 2026-08-16 / 東A-01a"),
     ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "コミックマーケットを編集" }),
+    );
+    await userEvent.clear(screen.getByLabelText("イベント名"));
+    await userEvent.type(screen.getByLabelText("イベント名"), "コミックマーケット106");
+    await userEvent.clear(screen.getByLabelText("サークルスペース"));
+    await userEvent.type(screen.getByLabelText("サークルスペース"), "東B-02b");
+    await userEvent.click(screen.getByRole("button", { name: "イベントを更新" }));
+    expect(
+      await screen.findByText("コミックマーケット106 / 2026-08-16 / 東B-02b"),
+    ).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("イベント名"), "削除用イベント");
+    await userEvent.type(screen.getByLabelText("開催日"), "2026-08-17");
+    await userEvent.click(screen.getByRole("button", { name: "イベントを追加" }));
+    expect(await screen.findByText("削除用イベント / 2026-08-17")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "削除用イベントを削除" }),
+    );
+    expect(screen.queryByText("削除用イベント / 2026-08-17")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "在庫" }));
     await userEvent.clear(screen.getByLabelText("初期在庫"));
@@ -68,7 +87,7 @@ describe("ManagementPage", () => {
     await userEvent.type(screen.getByLabelText("取り置きメモ"), "田中さん");
     await userEvent.click(screen.getByRole("button", { name: "在庫を追加" }));
     expect(
-      await screen.findByText(/コミックマーケット \/ .+ \/ 在庫20 \/ 取置3 \/ 田中さん/),
+      await screen.findByText(/コミックマーケット106 \/ .+ \/ 在庫20 \/ 取置3 \/ 田中さん/),
     ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "経費" }));
@@ -107,7 +126,7 @@ describe("ManagementPage", () => {
     await expect(database.expenses.count()).resolves.toBe(1);
     await expect(database.bundles.count()).resolves.toBe(1);
     await expect(database.events.toArray()).resolves.toMatchObject([
-      { circleSpace: "東A-01a" },
+      { circleSpace: "東B-02b", name: "コミックマーケット106" },
     ]);
     await expect(database.eventInventories.toArray()).resolves.toMatchObject([
       { reservationMemo: "田中さん" },

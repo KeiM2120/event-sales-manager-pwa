@@ -179,6 +179,7 @@ function EventsPanel({
   const [eventDate, setEventDate] = useState("");
   const [series, setSeries] = useState<Series>("comic-market");
   const [circleSpace, setCircleSpace] = useState("");
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -186,16 +187,38 @@ function EventsPanel({
       return;
     }
 
-    await database.events.add({
-      id: createId("event"),
+    await database.events.put({
+      id: editingEventId ?? createId("event"),
       name: name.trim(),
       eventDate,
       series,
       ...(circleSpace.trim() ? { circleSpace: circleSpace.trim() } : {}),
     });
+    resetEventForm();
+  }
+
+  function startEditingEvent(event: Event) {
+    setEditingEventId(event.id);
+    setName(event.name);
+    setEventDate(event.eventDate);
+    setSeries(event.series);
+    setCircleSpace(event.circleSpace ?? "");
+  }
+
+  function resetEventForm() {
+    setEditingEventId(null);
     setName("");
     setEventDate("");
+    setSeries("comic-market");
     setCircleSpace("");
+  }
+
+  async function deleteEvent(eventId: string) {
+    if (editingEventId === eventId) {
+      resetEventForm();
+    }
+
+    await database.events.delete(eventId);
   }
 
   return (
@@ -220,18 +243,74 @@ function EventsPanel({
           value={circleSpace}
           onChange={setCircleSpace}
         />
-        <SubmitButton label="イベントを追加" />
+        <SubmitButton label={editingEventId ? "イベントを更新" : "イベントを追加"} />
+        {editingEventId && (
+          <button
+            type="button"
+            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
+            onClick={resetEventForm}
+          >
+            編集をキャンセル
+          </button>
+        )}
       </form>
-      <List
-        emptyText="イベントはまだありません。"
-        items={events.map((item) => ({
-          id: item.id,
-          label: [item.name, item.eventDate, item.circleSpace]
-            .filter(Boolean)
-            .join(" / "),
-        }))}
+      <EventList
+        events={events}
+        onDelete={deleteEvent}
+        onEdit={startEditingEvent}
       />
     </section>
+  );
+}
+
+function EventList({
+  events,
+  onDelete,
+  onEdit,
+}: {
+  events: Event[];
+  onDelete: (eventId: string) => void;
+  onEdit: (event: Event) => void;
+}) {
+  if (events.length === 0) {
+    return <p className="text-sm text-slate-600">イベントはまだありません。</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {events.map((event) => {
+        const label = [event.name, event.eventDate, event.circleSpace]
+          .filter(Boolean)
+          .join(" / ");
+
+        return (
+          <li
+            key={event.id}
+            className="grid gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]"
+          >
+            <span>{label}</span>
+            <span className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="min-h-10 rounded-md border border-slate-300 bg-white px-3 font-bold text-slate-800"
+                aria-label={`${event.name}を編集`}
+                onClick={() => onEdit(event)}
+              >
+                編集
+              </button>
+              <button
+                type="button"
+                className="min-h-10 rounded-md border border-red-200 bg-white px-3 font-bold text-red-700"
+                aria-label={`${event.name}を削除`}
+                onClick={() => onDelete(event.id)}
+              >
+                削除
+              </button>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
