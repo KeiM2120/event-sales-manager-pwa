@@ -1,6 +1,10 @@
+import { usePwaUpdate } from "../hooks/usePwaUpdate";
+
 const csvButtons = ["会計CSV", "明細CSV", "経費CSV", "全データJSON"];
 
 export function SettingsPage() {
+  const pwa = usePwaUpdate();
+
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">設定</h1>
@@ -17,8 +21,19 @@ export function SettingsPage() {
       <section className="rounded-md border border-slate-200 bg-white p-4">
         <h2 className="font-bold">PWA更新</h2>
         <p className="mt-1 text-sm text-slate-600">
-          更新がある場合はここに表示します。
+          {pwa.offlineReady
+            ? "オフラインで利用できます。"
+            : "更新がある場合はここに表示します。"}
         </p>
+        {pwa.needRefresh && (
+          <button
+            type="button"
+            className="mt-3 rounded-md bg-slate-900 px-3 py-2 text-white"
+            onClick={pwa.update}
+          >
+            更新する
+          </button>
+        )}
       </section>
     </div>
   );
