@@ -1,107 +1,109 @@
-# Event Operations UX and Event Reset Design
+# イベント運用UXとイベント別初期化の設計
 
-## Purpose
+## 目的
 
-Event Sales Manager PWA should make the active event explicit, guide the user through setup before checkout, and allow safe cleanup of per-event operational data. The design prioritizes event-day safety and fast offline use on a single Android device.
+Event Sales Manager PWA では、操作対象のイベントを明示し、会計前のセットアップ状態を分かりやすく案内し、イベント単位の運用データを安全に初期化できるようにする。
 
-## Scope
+この設計では、イベント当日の事故を避けることと、Android 端末1台で素早くオフライン運用できることを優先する。
 
-This design covers three areas:
+## 対象範囲
 
-- Home event operations UX.
-- Settings reset for the selected event's operational data.
-- Minimal domain/service boundaries for the new behavior.
+この設計で扱う範囲は以下の3点。
 
-This design does not include cloud sync, authentication, repository-wide refactoring, JSON import/export, person-level reservation management, or sample seed data.
+- ホーム画面のイベント運用UX。
+- 設定画面での選択中イベントの運用データ初期化。
+- 今回追加する挙動に必要な最小限の domain/service 境界。
 
-## A. Event Operations UX
+この設計では、クラウド同期、認証、repository 全体のリファクタリング、JSON import/export、個人単位の予約管理、サンプルデータ投入は扱わない。
 
-### Event Selection
+## A. イベント運用UX
 
-The app will keep `selectedEventId` in `App` state. Home will show the selected event near the top of the screen. If more than one event exists, Home will provide a simple event switcher.
+### イベント選択
 
-Checkout, statistics, and settings CSV export will all use the selected event. If the selected event no longer exists, the app will fall back to the first remaining event. If no event exists, checkout navigation will redirect to management with a setup notice.
+アプリは `selectedEventId` を `App` の state で保持する。ホーム画面の上部には、選択中イベントを表示する。イベントが複数存在する場合は、ホーム画面で簡単にイベントを切り替えられるようにする。
 
-### Setup Status
+会計、統計、設定画面のCSV出力は、すべて選択中イベントを対象にする。選択中イベントが存在しなくなった場合は、残っている先頭イベントへフォールバックする。イベントが1件も存在しない場合、会計画面への遷移は管理画面へリダイレクトし、セットアップを促す通知を表示する。
 
-Home will show a detailed setup status for the current app data:
+### セットアップ状態
 
-- Event registration.
-- Product registration.
-- Bundle registration.
-- Inventory registration for the selected event.
-- Checkout readiness.
+ホーム画面に、現在のアプリデータに対する詳細なセットアップ状態を表示する。
 
-Product, bundle, and inventory rows will show counts. Missing rows will guide the user to management.
+- イベント登録。
+- 商品登録。
+- セット登録。
+- 選択中イベントの在庫登録。
+- 会計可能状態。
 
-Checkout is ready when all of the following are true:
+商品、セット、在庫の行には登録件数を表示する。不足している項目からは管理画面へ誘導する。
 
-- At least one event exists.
-- At least one active product exists.
-- The selected event has at least one inventory row.
+会計可能状態は、以下をすべて満たした場合に OK とする。
 
-Bundles are visible in setup status but are not required for checkout readiness.
+- イベントが1件以上存在する。
+- 有効な商品が1件以上存在する。
+- 選択中イベントの在庫行が1件以上存在する。
 
-## B. Selected Event Operational Reset
+セットはセットアップ状態には表示するが、会計可能条件には含めない。
 
-Settings will add a dangerous operation section for resetting only the selected event's operational data.
+## B. 選択中イベントの運用データ初期化
 
-The reset deletes:
+設定画面に、選択中イベントの運用データだけを初期化する危険操作エリアを追加する。
 
-- `eventInventories` for the selected event.
-- `sales` for the selected event.
-- `expenses` for the selected event.
+初期化で削除するデータは以下。
 
-The reset preserves:
+- 選択中イベントの `eventInventories`。
+- 選択中イベントの `sales`。
+- 選択中イベントの `expenses`。
 
-- Events.
-- Products.
-- Bundles.
-- Bundle items.
-- Data belonging to other events.
+初期化で残すデータは以下。
 
-The reset requires a strong guard:
+- イベント。
+- 商品。
+- セット。
+- セット構成。
+- 他イベントに属するデータ。
 
-- The user must enter the selected event name exactly.
-- The execute button is disabled until the input matches.
-- The UI clearly states that the operation cannot be undone.
-- After completion, Settings shows a success message.
+初期化には強めのガードを設ける。
 
-After reset, Home setup status should naturally show the selected event as not checkout-ready because inventory is gone.
+- 選択中イベント名の完全一致入力を必須にする。
+- 入力が一致するまで実行ボタンは無効にする。
+- この操作は元に戻せないことを明示する。
+- 完了後、設定画面に成功メッセージを表示する。
 
-## C. Minimal Design Boundaries
+初期化後は在庫が削除されるため、ホーム画面のセットアップ状態では自然に会計不可として表示される。
 
-The implementation will add focused domain/service boundaries only for the new behavior:
+## C. 最小限の設計境界
+
+今回追加する挙動に対してのみ、焦点を絞った domain/service 境界を追加する。
 
 - `src/domain/setupStatus.ts`
-  - Calculates setup rows and checkout readiness from events, products, bundles, and selected-event inventory.
-  - Contains no React or Dexie dependencies.
+  - イベント、商品、セット、選択中イベントの在庫から、セットアップ行と会計可能状態を計算する。
+  - React や Dexie には依存しない。
 - `src/services/eventResetService.ts`
-  - Deletes selected-event operational data in a Dexie transaction.
-  - Does not delete master data or other events' data.
+  - Dexie transaction 内で、選択中イベントの運用データを削除する。
+  - マスタデータや他イベントのデータは削除しない。
 
-Existing pages may continue to use Dexie live queries directly where already established. Full repository-layer refactoring is intentionally out of scope for this change.
+既存画面では、すでに定着している Dexie live query の直接利用を継続してよい。repository 層への全面的な整理は、この変更の対象外とする。
 
-## Testing Plan
+## テスト方針
 
-Tests should cover:
+以下をテストする。
 
-- Home displays the selected event and can switch between multiple events.
-- Home setup status reflects event, product, bundle, inventory, and checkout readiness.
-- Checkout navigation redirects to management when there is no event or no selected-event inventory.
-- Checkout, statistics, and settings receive the selected event.
-- Reset confirmation stays disabled until the selected event name matches exactly.
-- Reset deletes only selected-event inventory, sales, and expenses.
-- Reset preserves products, bundles, bundle items, events, and other events' data.
-- `setupStatus` domain logic independently covers required and optional setup rows.
-- `eventResetService` independently covers transaction behavior and event scoping.
+- ホーム画面が選択中イベントを表示し、複数イベントを切り替えられること。
+- ホーム画面のセットアップ状態が、イベント、商品、セット、在庫、会計可能状態を反映すること。
+- イベントがない場合、または選択中イベントの在庫がない場合、会計画面への遷移が管理画面へリダイレクトされること。
+- 会計、統計、設定画面が選択中イベントを受け取ること。
+- 初期化確認は、選択中イベント名が完全一致するまで実行不可であること。
+- 初期化で、選択中イベントの在庫、売上、経費だけが削除されること。
+- 初期化で、商品、セット、セット構成、イベント、他イベントのデータが残ること。
+- `setupStatus` の domain logic が、必須項目と任意項目の状態を単体で検証できること。
+- `eventResetService` が、transaction とイベント単位の削除範囲を単体で検証できること。
 
-## Deferred Items
+## 後回しにする項目
 
-The following remain deferred:
+以下は後続検討とする。
 
-- Repository-wide Dexie access refactor.
-- JSON import/export.
-- Sample seed data.
-- Person-level reservation management.
-- Additional reservation workflow design.
+- Dexie access の repository 層への全面整理。
+- JSON import/export。
+- サンプルデータ投入。
+- 個人単位の予約管理。
+- 追加の予約ワークフロー設計。
