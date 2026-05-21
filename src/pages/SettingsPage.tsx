@@ -16,75 +16,118 @@ interface SettingsPageProps {
   database?: EventSalesDatabase;
   downloader?: CsvExportOptions["downloader"];
   eventId?: string;
+  resetOperationalData?: (
+    database: EventSalesDatabase,
+    eventId: string,
+  ) => Promise<unknown>;
 }
 
 export function SettingsPage({
   database = appDatabase,
   downloader,
   eventId = "event-1",
+  resetOperationalData = resetSelectedEventOperationalData,
 }: SettingsPageProps) {
   const pwa = usePwaUpdate();
   const [resetConfirmation, setResetConfirmation] = useState("");
-  const [resetMessage, setResetMessage] = useState("");
-  const events =
-    (useLiveQuery(() => database.events.toArray(), [database]) as
-      | Event[]
-      | undefined) ?? [];
-  const sales =
-    (useLiveQuery(() => database.sales.toArray(), [database]) as Sale[] | undefined) ??
-    [];
-  const expenses =
-    (useLiveQuery(() => database.expenses.toArray(), [database]) as
-      | Expense[]
-      | undefined) ?? [];
+  const [resetMessage, setResetMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [resetPending, setResetPending] = useState(false);
+  const eventsQuery = useLiveQuery(() => database.events.toArray(), [database]) as
+    | Event[]
+    | undefined;
+  const salesQuery = useLiveQuery(() => database.sales.toArray(), [database]) as
+    | Sale[]
+    | undefined;
+  const expensesQuery = useLiveQuery(() => database.expenses.toArray(), [
+    database,
+  ]) as Expense[] | undefined;
+  const events = eventsQuery ?? [];
+  const sales = salesQuery ?? [];
+  const expenses = expensesQuery ?? [];
+  const csvLoaded = salesQuery !== undefined && expensesQuery !== undefined;
   const selectedEvent = events.find((event) => event.id === eventId);
   const eventSales = sales.filter((sale) => sale.eventId === eventId);
   const eventExpenses = expenses.filter((expense) => expense.eventId === eventId);
   const canResetSelectedEvent =
-    selectedEvent !== undefined && resetConfirmation === selectedEvent.name;
+    selectedEvent !== undefined &&
+    resetConfirmation === selectedEvent.name &&
+    !resetPending;
   const csvButtons = [
     {
       label: "売上サマリーCSV",
-      onClick: () =>
+      onClick: () => {
+        if (!csvLoaded) {
+          return;
+        }
         downloadSalesSummaryCsv(eventSales, {
           downloader,
           filename: `sales-summary-${eventId}.csv`,
-        }),
+        });
+      },
     },
     {
       label: "売上明細CSV",
-      onClick: () =>
+      onClick: () => {
+        if (!csvLoaded) {
+          return;
+        }
         downloadSalesDetailCsv(eventSales, {
           downloader,
           filename: `sales-detail-${eventId}.csv`,
-        }),
+        });
+      },
     },
     {
       label: "商品別展開CSV",
-      onClick: () =>
+      onClick: () => {
+        if (!csvLoaded) {
+          return;
+        }
         downloadProductMovementCsv(eventSales, {
           downloader,
           filename: `product-movement-${eventId}.csv`,
-        }),
+        });
+      },
     },
     {
       label: "経費CSV",
-      onClick: () =>
+      onClick: () => {
+        if (!csvLoaded) {
+          return;
+        }
         downloadExpensesCsv(eventExpenses, {
           downloader,
           filename: `expenses-${eventId}.csv`,
-        }),
+        });
       },
+    },
   ];
 
   async function handleResetSelectedEvent() {
-    if (!selectedEvent || !canResetSelectedEvent) {
+    if (!selectedEvent || !canResetSelectedEvent || resetPending) {
       return;
     }
 
-    await resetSelectedEventOperationalData(database, selectedEvent.id);
-    setResetConfirmation("");
-    setResetMessage("選択中イベントの運用データを初期化しました。");
+    setResetPending(true);
+    setResetMessage(null);
+    try {
+      await resetOperationalData(database, selectedEvent.id);
+      setResetConfirmation("");
+      setResetMessage({
+        kind: "success",
+        text: "選択中イベントの運用データを初期化しました。",
+      });
+    } catch {
+      setResetMessage({
+        kind: "error",
+        text: "選択中イベントの運用データを初期化できませんでした。もう一度お試しください。",
+      });
+    } finally {
+      setResetPending(false);
+    }
   }
 
   return (
@@ -97,7 +140,8 @@ export function SettingsPage({
             <button
               key={item.label}
               type="button"
-              className="rounded-md border px-3 py-3 font-semibold"
+              className="rounded-md border px-3 py-3 font-semibold disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+              disabled={!csvLoaded}
               onClick={item.onClick}
             >
               {item.label}
@@ -138,7 +182,7 @@ export function SettingsPage({
             value={resetConfirmation}
             onChange={(event) => {
               setResetConfirmation(event.target.value);
-              setResetMessage("");
+              setResetMessage(null);
             }}
           />
         </label>
@@ -151,7 +195,14 @@ export function SettingsPage({
           選択中イベントの運用データを初期化
         </button>
         {resetMessage && (
-          <p className="mt-3 text-sm font-semibold text-green-700">{resetMessage}</p>
+          <p
+            className={`mt-3 text-sm font-semibold ${
+              resetMessage.kind === "success" ? "text-green-700" : "text-red-700"
+            }`}
+            role="status"
+          >
+            {resetMessage.text}
+          </p>
         )}
       </section>
     </div>

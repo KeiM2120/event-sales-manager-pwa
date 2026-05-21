@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventSalesDatabase } from "../db/database";
@@ -59,7 +59,12 @@ describe("SettingsPage", () => {
       <SettingsPage database={database} eventId="event-1" downloader={downloader} />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: "売上サマリーCSV" }));
+    const salesSummaryButton = screen.getByRole("button", { name: "売上サマリーCSV" });
+    expect(salesSummaryButton).toBeDisabled();
+
+    await waitFor(() => expect(salesSummaryButton).toBeEnabled());
+
+    await userEvent.click(salesSummaryButton);
     await userEvent.click(screen.getByRole("button", { name: "売上明細CSV" }));
     await userEvent.click(screen.getByRole("button", { name: "商品別展開CSV" }));
     await userEvent.click(screen.getByRole("button", { name: "経費CSV" }));
@@ -74,8 +79,17 @@ describe("SettingsPage", () => {
     expect(downloader.mock.calls[0]?.[1]).toContain(
       "saleId,eventId,datetime,totalAmount,totalQuantity,canceled,lineCount",
     );
+    expect(downloader.mock.calls[0]?.[1]).toContain(
+      "sale-1,event-1,2026-08-16T10:00:00+09:00,1000,1,false,1",
+    );
+    expect(downloader.mock.calls[1]?.[1]).toContain(
+      "sale-1,2026-08-16T10:00:00+09:00,product:book,product,book,新刊,book,1000,1,1000,false",
+    );
     expect(downloader.mock.calls[2]?.[1]).toContain(
       "saleId,datetime,lineId,sourceKind",
+    );
+    expect(downloader.mock.calls[3]?.[1]).toContain(
+      "expense-1,event-1,printing,印刷所,500,",
     );
   });
 
@@ -164,7 +178,9 @@ describe("SettingsPage", () => {
       screen.getByRole("button", { name: "選択中イベントの運用データを初期化" }),
     );
 
-    expect(await screen.findByText("選択中イベントの運用データを初期化しました。")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "選択中イベントの運用データを初期化しました。",
+    );
     expect(confirmationInput).toHaveValue("");
     expect(await database.eventInventories.where("eventId").equals("event-1").count()).toBe(0);
     expect(await database.eventInventories.where("eventId").equals("event-2").count()).toBe(1);
@@ -176,5 +192,50 @@ describe("SettingsPage", () => {
     expect(await database.products.count()).toBe(1);
     expect(await database.bundles.count()).toBe(1);
     expect(await database.bundleItems.count()).toBe(1);
+  });
+
+  it("disables selected-event reset while it is running", async () => {
+    await database.events.put({
+      id: "event-1",
+      name: "コミティア150",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
+    let finishReset: (() => void) | undefined;
+    const resetOperationalData = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishReset = resolve;
+        }),
+    );
+
+    render(
+      <SettingsPage
+        database={database}
+        eventId="event-1"
+        resetOperationalData={resetOperationalData}
+      />,
+    );
+
+    await userEvent.type(
+      await screen.findByLabelText("確認のためイベント名を入力"),
+      "コミティア150",
+    );
+    const resetButton = screen.getByRole("button", {
+      name: "選択中イベントの運用データを初期化",
+    });
+
+    await userEvent.click(resetButton);
+
+    expect(resetOperationalData).toHaveBeenCalledTimes(1);
+    expect(resetButton).toBeDisabled();
+
+    await userEvent.click(resetButton);
+    expect(resetOperationalData).toHaveBeenCalledTimes(1);
+
+    finishReset?.();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "選択中イベントの運用データを初期化しました。",
+    );
   });
 });
