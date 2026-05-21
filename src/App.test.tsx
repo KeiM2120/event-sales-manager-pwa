@@ -1,9 +1,23 @@
 import "fake-indexeddb/auto";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { EventSalesDatabase } from "./db/database";
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function createDeferred<T>(): Deferred<T> {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+
+  return { promise, resolve };
+}
 
 describe("App", () => {
   let database: EventSalesDatabase;
@@ -114,6 +128,61 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "管理" })).toBeInTheDocument();
     expect(screen.getByText("在庫を登録すると会計を開始できます。")).toBeInTheDocument();
+  });
+
+  it("keeps newer navigation when checkout inventory guard resolves later", async () => {
+    await database.events.put({
+      id: "event-1",
+      name: "イベント1",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
+    await database.products.put({
+      id: "book-1",
+      name: "新刊",
+      productGenre: "book",
+      defaultPrice: 1000,
+      isActive: true,
+    });
+    await database.eventInventories.put({
+      eventId: "event-1",
+      productId: "book-1",
+      initialStock: 30,
+      reservedStock: 0,
+    });
+    const deferredCount = createDeferred<number>();
+    const originalWhereClause = database.eventInventories.where("eventId");
+    const delayedWhereClause = {
+      equals: (value: string) => {
+        const collection = originalWhereClause.equals(value);
+        return {
+          ...collection,
+          count: () => deferredCount.promise,
+        } as unknown as ReturnType<typeof originalWhereClause.equals>;
+      },
+    } as unknown as typeof originalWhereClause;
+    const whereSpy = vi.spyOn(database.eventInventories, "where") as unknown as {
+      mockReturnValue: (value: typeof originalWhereClause) => void;
+    };
+    whereSpy.mockReturnValue(delayedWhereClause);
+
+    render(<App database={database} />);
+
+    await screen.findByLabelText("イベントを選択");
+    await userEvent.click(screen.getByRole("button", { name: "会計" }));
+    await userEvent.click(screen.getByRole("button", { name: "管理" }));
+
+    expect(await screen.findByRole("heading", { name: "管理" })).toBeInTheDocument();
+
+    await act(async () => {
+      deferredCount.resolve(1);
+      await deferredCount.promise;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "管理" })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: "会計" })).not.toBeInTheDocument();
   });
 
   it("reflects management event, product, bundle, and inventory inputs on checkout", async () => {

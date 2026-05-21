@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { AppShell, type AppScreen } from "./components/AppShell";
 import { db as appDatabase, type EventSalesDatabase } from "./db/database";
@@ -17,6 +17,7 @@ function App({ database = appDatabase }: AppProps) {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [managementNotice, setManagementNotice] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const navigationRequestId = useRef(0);
   const events =
     (useLiveQuery(() => database.events.toArray(), [database]) as
       | Event[]
@@ -44,6 +45,9 @@ function App({ database = appDatabase }: AppProps) {
   }, [effectiveSelectedEventId, selectedEventId]);
 
   async function handleNavigate(nextScreen: AppScreen) {
+    const requestId = navigationRequestId.current + 1;
+    navigationRequestId.current = requestId;
+
     if (nextScreen === "checkout") {
       if (effectiveSelectedEventId === null) {
         setManagementNotice("イベントを登録すると会計を開始できます。");
@@ -55,6 +59,10 @@ function App({ database = appDatabase }: AppProps) {
         .where("eventId")
         .equals(effectiveSelectedEventId)
         .count();
+      if (requestId !== navigationRequestId.current) {
+        return;
+      }
+
       if (selectedEventInventoryCount === 0) {
         setManagementNotice("在庫を登録すると会計を開始できます。");
         setScreen("management");
