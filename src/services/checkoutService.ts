@@ -44,6 +44,19 @@ export async function confirmCheckout(
         throw new Error(validation.errors.join("\n"));
       }
 
+      for (const line of sale.lines.filter((item) => item.kind === "reservation")) {
+        const key: [string, string] = [state.eventId, line.refId];
+        const inventory = await db.eventInventories.get(key);
+        if (!inventory) {
+          throw new Error(`取り置き在庫が不足しています: ${line.displayName}`);
+        }
+
+        await db.eventInventories.put({
+          ...inventory,
+          reservedStock: inventory.reservedStock - line.quantity,
+        });
+      }
+
       await db.sales.put(sale);
     },
   );
@@ -101,5 +114,23 @@ export async function undoSale(
   db: EventSalesDatabase,
   saleId: string,
 ): Promise<void> {
-  await db.sales.update(saleId, { canceled: true });
+  await db.transaction("rw", db.eventInventories, db.sales, async () => {
+    const sale = await db.sales.get(saleId);
+    if (!sale || sale.canceled) {
+      return;
+    }
+
+    for (const line of sale.lines.filter((item) => item.kind === "reservation")) {
+      const key: [string, string] = [sale.eventId, line.refId];
+      const inventory = await db.eventInventories.get(key);
+      if (inventory) {
+        await db.eventInventories.put({
+          ...inventory,
+          reservedStock: inventory.reservedStock + line.quantity,
+        });
+      }
+    }
+
+    await db.sales.update(saleId, { canceled: true });
+  });
 }

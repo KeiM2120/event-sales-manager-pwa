@@ -48,6 +48,35 @@ describe("checkoutService", () => {
     expect(sale.canceled).toBe(false);
   });
 
+  it("confirms reservation checkout by decrementing reserved stock in the same transaction", async () => {
+    await db.eventInventories.put({
+      eventId: "event-1",
+      productId: "book",
+      initialStock: 10,
+      reservedStock: 2,
+    });
+
+    const state = checkoutReducer(createInitialCheckoutState("event-1"), {
+      type: "addLine",
+      item: {
+        kind: "reservation",
+        refId: "book",
+        displayName: "取り置き 新刊",
+        productGenre: "book",
+        unitPrice: 1000,
+      },
+    });
+
+    await confirmCheckout(db, state, {
+      saleId: "sale-1",
+      datetime: "2026-08-16T10:00:00+09:00",
+    });
+
+    await expect(db.eventInventories.get(["event-1", "book"])).resolves.toMatchObject({
+      reservedStock: 1,
+    });
+  });
+
   it("decrements reserved stock and creates a reservation sale", async () => {
     await db.eventInventories.put({
       eventId: "event-1",
@@ -91,6 +120,43 @@ describe("checkoutService", () => {
 
     await expect(db.sales.get("sale-1")).resolves.toMatchObject({
       canceled: true,
+    });
+  });
+
+  it("undoes a reservation sale by restoring reserved stock", async () => {
+    await db.eventInventories.put({
+      eventId: "event-1",
+      productId: "book",
+      initialStock: 10,
+      reservedStock: 1,
+    });
+    await db.sales.put({
+      id: "sale-1",
+      eventId: "event-1",
+      datetime: "2026-08-16T10:00:00+09:00",
+      totalAmount: 1000,
+      canceled: false,
+      lines: [
+        {
+          lineId: "reservation:book",
+          kind: "reservation",
+          refId: "book",
+          displayName: "取り置き 新刊",
+          productGenre: "book",
+          unitPrice: 1000,
+          quantity: 2,
+          subtotal: 2000,
+        },
+      ],
+    });
+
+    await undoSale(db, "sale-1");
+
+    await expect(db.sales.get("sale-1")).resolves.toMatchObject({
+      canceled: true,
+    });
+    await expect(db.eventInventories.get(["event-1", "book"])).resolves.toMatchObject({
+      reservedStock: 3,
     });
   });
 });
