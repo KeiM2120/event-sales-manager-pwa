@@ -120,37 +120,58 @@ describe("SettingsPage", () => {
       { eventId: "event-1", productId: "book-1", initialStock: 30, reservedStock: 0 },
       { eventId: "event-2", productId: "book-1", initialStock: 40, reservedStock: 0 },
     ]);
-    await database.sales.put({
-      id: "sale-1",
-      eventId: "event-1",
-      datetime: "2026-11-23T10:00:00+09:00",
-      totalAmount: 1000,
-      canceled: false,
-      lines: [],
-    });
-    await database.expenses.put({
-      id: "expense-1",
-      eventId: "event-1",
-      category: "printing",
-      payee: "印刷所",
-      amount: 500,
-    });
+    await database.sales.bulkPut([
+      {
+        id: "sale-1",
+        eventId: "event-1",
+        datetime: "2026-11-23T10:00:00+09:00",
+        totalAmount: 1000,
+        canceled: false,
+        lines: [],
+      },
+      {
+        id: "sale-2",
+        eventId: "event-2",
+        datetime: "2026-12-30T10:00:00+09:00",
+        totalAmount: 1000,
+        canceled: false,
+        lines: [],
+      },
+    ]);
+    await database.expenses.bulkPut([
+      {
+        id: "expense-1",
+        eventId: "event-1",
+        category: "printing",
+        payee: "印刷所",
+        amount: 500,
+      },
+      {
+        id: "expense-2",
+        eventId: "event-2",
+        category: "transport",
+        payee: "交通機関",
+        amount: 800,
+      },
+    ]);
 
     render(<SettingsPage database={database} eventId="event-1" />);
 
-    await userEvent.type(
-      await screen.findByLabelText("確認のためイベント名を入力"),
-      "コミティア150",
-    );
+    const confirmationInput = await screen.findByLabelText("確認のためイベント名を入力");
+
+    await userEvent.type(confirmationInput, "コミティア150");
     await userEvent.click(
       screen.getByRole("button", { name: "選択中イベントの運用データを初期化" }),
     );
 
     expect(await screen.findByText("選択中イベントの運用データを初期化しました。")).toBeInTheDocument();
+    expect(confirmationInput).toHaveValue("");
     expect(await database.eventInventories.where("eventId").equals("event-1").count()).toBe(0);
     expect(await database.eventInventories.where("eventId").equals("event-2").count()).toBe(1);
     expect(await database.sales.where("eventId").equals("event-1").count()).toBe(0);
+    expect(await database.sales.where("eventId").equals("event-2").count()).toBe(1);
     expect(await database.expenses.where("eventId").equals("event-1").count()).toBe(0);
+    expect(await database.expenses.where("eventId").equals("event-2").count()).toBe(1);
     expect(await database.events.count()).toBe(2);
     expect(await database.products.count()).toBe(1);
     expect(await database.bundles.count()).toBe(1);
