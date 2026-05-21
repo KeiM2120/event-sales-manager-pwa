@@ -1,3 +1,4 @@
+import { buildProductMovementRows } from "./inventory";
 import type { Expense, Sale } from "./types";
 
 type CsvCell = string | number | boolean | undefined;
@@ -19,13 +20,14 @@ export function buildCsv(rows: CsvCell[][]): string {
 }
 
 export function buildSalesCsv(sales: Sale[]): string {
+  return buildSalesDetailCsv(sales);
+}
+
+export function buildSalesDetailCsv(sales: Sale[]): string {
   return buildCsv([
     [
       "saleId",
-      "eventId",
       "datetime",
-      "canceled",
-      "totalAmount",
       "lineId",
       "kind",
       "refId",
@@ -34,14 +36,14 @@ export function buildSalesCsv(sales: Sale[]): string {
       "unitPrice",
       "quantity",
       "subtotal",
+      "canceled",
+      "componentProductIds",
+      "componentQuantities",
     ],
     ...sales.flatMap((sale) =>
       sale.lines.map((line) => [
         sale.id,
-        sale.eventId,
         sale.datetime,
-        sale.canceled,
-        sale.totalAmount,
         line.lineId,
         line.kind,
         line.refId,
@@ -50,8 +52,69 @@ export function buildSalesCsv(sales: Sale[]): string {
         line.unitPrice,
         line.quantity,
         line.subtotal,
+        sale.canceled,
+        line.components?.map((component) => component.productId).join("|"),
+        line.components?.map((component) => component.quantity).join("|"),
       ]),
     ),
+  ]);
+}
+
+export function buildSalesSummaryCsv(sales: Sale[]): string {
+  return buildCsv([
+    [
+      "saleId",
+      "eventId",
+      "datetime",
+      "totalAmount",
+      "totalQuantity",
+      "canceled",
+      "lineCount",
+    ],
+    ...sales.map((sale) => [
+      sale.id,
+      sale.eventId,
+      sale.datetime,
+      sale.totalAmount,
+      sale.lines.reduce((total, line) => total + line.quantity, 0),
+      sale.canceled,
+      sale.lines.length,
+    ]),
+  ]);
+}
+
+export function buildProductMovementCsv(sales: Sale[]): string {
+  return buildCsv([
+    [
+      "saleId",
+      "datetime",
+      "lineId",
+      "sourceKind",
+      "sourceRefId",
+      "sourceDisplayName",
+      "productId",
+      "productName",
+      "productGenre",
+      "unitQuantity",
+      "lineQuantity",
+      "totalProductQuantity",
+      "canceled",
+    ],
+    ...buildProductMovementRows(sales).map((row) => [
+      row.saleId,
+      row.datetime,
+      row.lineId,
+      row.sourceKind,
+      row.sourceRefId,
+      row.sourceDisplayName,
+      row.productId,
+      row.productName,
+      row.productGenre,
+      row.unitQuantity,
+      row.lineQuantity,
+      row.totalProductQuantity,
+      row.canceled,
+    ]),
   ]);
 }
 

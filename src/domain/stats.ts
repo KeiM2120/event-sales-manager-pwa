@@ -1,3 +1,4 @@
+import { buildProductMovementRows } from "./inventory";
 import type { Expense, ProductGenre, Sale } from "./types";
 
 export interface EventStatsInput {
@@ -59,6 +60,9 @@ export function calculateEventStats(input: EventStatsInput): EventStats {
     (total, expense) => total + expense.amount,
     0,
   );
+  const movementRows = buildProductMovementRows(activeSales).filter(
+    (row) => !row.canceled,
+  );
 
   return {
     summary: {
@@ -70,12 +74,12 @@ export function calculateEventStats(input: EventStatsInput): EventStats {
       profit: totalSales - totalExpenses,
     },
     genreQuantities: sortByQuantityDesc(
-      Array.from(sumByGenre(activeSales).entries()).map(
+      Array.from(sumByGenre(movementRows).entries()).map(
         ([productGenre, quantity]) => ({ productGenre, quantity }),
       ),
     ),
     productRanking: sortByQuantityDesc(
-      Array.from(sumByProduct(activeSales).values()),
+      Array.from(sumByProduct(movementRows).values()),
     ),
     salesHistory: activeSales
       .map((sale) => ({
@@ -87,33 +91,33 @@ export function calculateEventStats(input: EventStatsInput): EventStats {
   };
 }
 
-function sumByGenre(sales: Sale[]): Map<ProductGenre, number> {
+function sumByGenre(
+  movementRows: ReturnType<typeof buildProductMovementRows>,
+): Map<ProductGenre, number> {
   const quantities = new Map<ProductGenre, number>();
 
-  for (const sale of sales) {
-    for (const line of sale.lines) {
-      quantities.set(
-        line.productGenre,
-        (quantities.get(line.productGenre) ?? 0) + line.quantity,
-      );
-    }
+  for (const row of movementRows) {
+    quantities.set(
+      row.productGenre,
+      (quantities.get(row.productGenre) ?? 0) + row.totalProductQuantity,
+    );
   }
 
   return quantities;
 }
 
-function sumByProduct(sales: Sale[]): Map<string, ProductRankingRow> {
+function sumByProduct(
+  movementRows: ReturnType<typeof buildProductMovementRows>,
+): Map<string, ProductRankingRow> {
   const rows = new Map<string, ProductRankingRow>();
 
-  for (const sale of sales) {
-    for (const line of sale.lines) {
-      const current = rows.get(line.refId);
-      rows.set(line.refId, {
-        productId: line.refId,
-        displayName: current?.displayName ?? line.displayName,
-        quantity: (current?.quantity ?? 0) + line.quantity,
-      });
-    }
+  for (const row of movementRows) {
+    const current = rows.get(row.productId);
+    rows.set(row.productId, {
+      productId: row.productId,
+      displayName: current?.displayName ?? row.productName,
+      quantity: (current?.quantity ?? 0) + row.totalProductQuantity,
+    });
   }
 
   return rows;
