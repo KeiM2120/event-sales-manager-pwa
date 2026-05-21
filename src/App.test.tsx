@@ -185,6 +185,25 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: "会計" })).not.toBeInTheDocument();
   });
 
+  it("opens the matching management tab from setup status rows", async () => {
+    await database.events.put({
+      id: "event-1",
+      name: "イベント1",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
+
+    render(<App database={database} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "イベントの管理タブへ" }),
+    );
+
+    expect(await screen.findByRole("heading", { name: "管理" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "イベントを追加" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "商品を追加" })).not.toBeInTheDocument();
+  });
+
   it("reflects management event, product, bundle, and inventory inputs on checkout", async () => {
     render(<App database={database} />);
 

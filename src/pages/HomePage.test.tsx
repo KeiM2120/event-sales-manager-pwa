@@ -110,7 +110,48 @@ describe("HomePage", () => {
     expect(screen.getAllByText("1件")).toHaveLength(2);
     expect(screen.getByText("0件")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /商品/ }));
-    expect(onNavigate).toHaveBeenCalledWith("management");
+    await userEvent.click(screen.getByRole("button", { name: "商品の管理タブへ" }));
+    expect(onNavigate).toHaveBeenCalledWith("management", {
+      managementSection: "products",
+    });
+  });
+
+  it("routes setup status rows to their matching management tabs", async () => {
+    const onNavigate = vi.fn();
+    render(
+      <HomePage
+        events={events}
+        products={products}
+        bundles={bundles}
+        inventories={inventories}
+        selectedEventId="event-1"
+        onEventChange={vi.fn()}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "イベントの管理タブへ" }));
+    await userEvent.click(screen.getByRole("button", { name: "商品の管理タブへ" }));
+    await userEvent.click(screen.getByRole("button", { name: "セットの管理タブへ" }));
+    await userEvent.click(screen.getByRole("button", { name: "在庫の管理タブへ" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "会計可能状態の管理タブへ" }),
+    );
+
+    expect(onNavigate).toHaveBeenNthCalledWith(1, "management", {
+      managementSection: "events",
+    });
+    expect(onNavigate).toHaveBeenNthCalledWith(2, "management", {
+      managementSection: "products",
+    });
+    expect(onNavigate).toHaveBeenNthCalledWith(3, "management", {
+      managementSection: "bundles",
+    });
+    expect(onNavigate).toHaveBeenNthCalledWith(4, "management", {
+      managementSection: "inventory",
+    });
+    expect(onNavigate).toHaveBeenNthCalledWith(5, "management", {
+      managementSection: "inventory",
+    });
   });
 });

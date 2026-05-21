@@ -5,7 +5,10 @@ import { db as appDatabase, type EventSalesDatabase } from "./db/database";
 import type { Bundle, Event, EventInventory, Product } from "./domain/types";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { HomePage } from "./pages/HomePage";
-import { ManagementPage } from "./pages/ManagementPage";
+import {
+  ManagementPage,
+  type ManagementSection,
+} from "./pages/ManagementPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StatisticsPage } from "./pages/StatisticsPage";
 
@@ -13,15 +16,22 @@ interface AppProps {
   database?: EventSalesDatabase;
 }
 
+interface NavigateOptions {
+  managementSection?: ManagementSection;
+}
+
 function App({ database = appDatabase }: AppProps) {
   const [screen, setScreen] = useState<AppScreen>("home");
+  const [managementSection, setManagementSection] =
+    useState<ManagementSection>("products");
   const [managementNotice, setManagementNotice] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const navigationRequestId = useRef(0);
-  const events =
+  const eventRecords =
     (useLiveQuery(() => database.events.toArray(), [database]) as
       | Event[]
       | undefined) ?? [];
+  const events = eventRecords.filter((event) => !event.isHidden);
   const products =
     (useLiveQuery(() => database.products.toArray(), [database]) as
       | Product[]
@@ -44,12 +54,17 @@ function App({ database = appDatabase }: AppProps) {
     }
   }, [effectiveSelectedEventId, selectedEventId]);
 
-  async function handleNavigate(nextScreen: AppScreen) {
+  async function handleNavigate(nextScreen: AppScreen, options?: NavigateOptions) {
     const requestId = navigationRequestId.current + 1;
     navigationRequestId.current = requestId;
 
+    if (nextScreen === "management" && options?.managementSection) {
+      setManagementSection(options.managementSection);
+    }
+
     if (nextScreen === "checkout") {
       if (effectiveSelectedEventId === null) {
+        setManagementSection("events");
         setManagementNotice("イベントを登録すると会計を開始できます。");
         setScreen("management");
         return;
@@ -64,6 +79,7 @@ function App({ database = appDatabase }: AppProps) {
       }
 
       if (selectedEventInventoryCount === 0) {
+        setManagementSection("inventory");
         setManagementNotice("在庫を登録すると会計を開始できます。");
         setScreen("management");
         return;
@@ -94,7 +110,11 @@ function App({ database = appDatabase }: AppProps) {
         <StatisticsPage database={database} eventId={effectiveSelectedEventId} />
       )}
       {screen === "management" && (
-        <ManagementPage database={database} notice={managementNotice} />
+        <ManagementPage
+          database={database}
+          initialSection={managementSection}
+          notice={managementNotice}
+        />
       )}
       {screen === "settings" && effectiveSelectedEventId !== null && (
         <SettingsPage database={database} eventId={effectiveSelectedEventId} />

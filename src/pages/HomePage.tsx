@@ -1,6 +1,11 @@
 import type { AppScreen } from "../components/AppShell";
 import { buildSetupStatus } from "../domain/setupStatus";
 import type { Bundle, Event, EventInventory, Product } from "../domain/types";
+import type { ManagementSection } from "./ManagementPage";
+
+interface HomeNavigateOptions {
+  managementSection?: ManagementSection;
+}
 
 interface HomePageProps {
   events?: Event[];
@@ -9,7 +14,7 @@ interface HomePageProps {
   inventories?: EventInventory[];
   selectedEventId?: string | null;
   onEventChange?: (eventId: string) => void;
-  onNavigate: (screen: AppScreen) => void;
+  onNavigate: (screen: AppScreen, options?: HomeNavigateOptions) => void;
 }
 
 const quickActions: Array<{ label: string; screen: AppScreen; body: string }> = [
@@ -23,6 +28,14 @@ const statusStyles = {
   warning: "bg-amber-50 text-amber-700 ring-amber-200",
   missing: "bg-rose-50 text-rose-700 ring-rose-200",
 } as const;
+
+const setupManagementSections = {
+  events: "events",
+  products: "products",
+  bundles: "bundles",
+  inventory: "inventory",
+  checkout: "inventory",
+} as const satisfies Record<string, ManagementSection>;
 
 export function HomePage({
   events = [],
@@ -82,7 +95,12 @@ export function HomePage({
             <button
               key={row.id}
               type="button"
-              onClick={() => onNavigate("management")}
+              aria-label={`${row.label}の管理タブへ`}
+              onClick={() =>
+                onNavigate("management", {
+                  managementSection: setupManagementSections[row.id],
+                })
+              }
               className="min-h-16 rounded-md border border-slate-200 p-3 text-left"
             >
               <span className="flex items-start justify-between gap-3">

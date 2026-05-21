@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { SectionTabs } from "../components/SectionTabs";
 import { db as appDatabase, type EventSalesDatabase } from "../db/database";
@@ -11,13 +11,21 @@ import type {
   ExpenseCategory,
   Product,
   ProductGenre,
+  Sale,
   Series,
 } from "../domain/types";
 
-type ManagementSection = "products" | "bundles" | "inventory" | "events" | "expenses";
+export type ManagementSection =
+  | "products"
+  | "bundles"
+  | "inventory"
+  | "events"
+  | "expenses";
 
 interface ManagementPageProps {
   database?: EventSalesDatabase;
+  initialSection?: ManagementSection;
+  notice?: string | null;
 }
 
 interface BundleComponentDraft {
@@ -62,16 +70,21 @@ const expenseCategories: Array<{ value: ExpenseCategory; label: string }> = [
   { value: "other", label: "その他" },
 ];
 
-export function ManagementPage({ database = appDatabase }: ManagementPageProps) {
-  const [section, setSection] = useState<ManagementSection>("products");
+export function ManagementPage({
+  database = appDatabase,
+  initialSection = "products",
+  notice = null,
+}: ManagementPageProps) {
+  const [section, setSection] = useState<ManagementSection>(initialSection);
   const products =
     (useLiveQuery(() => database.products.toArray(), [database]) as
       | Product[]
       | undefined) ?? [];
-  const events =
+  const eventRecords =
     (useLiveQuery(() => database.events.toArray(), [database]) as
       | Event[]
       | undefined) ?? [];
+  const events = eventRecords.filter((event) => !event.isHidden);
   const bundles =
     (useLiveQuery(() => database.bundles.toArray(), [database]) as
       | Bundle[]
@@ -88,13 +101,32 @@ export function ManagementPage({ database = appDatabase }: ManagementPageProps) 
     (useLiveQuery(() => database.expenses.toArray(), [database]) as
       | Expense[]
       | undefined) ?? [];
+  const sales =
+    (useLiveQuery(() => database.sales.toArray(), [database]) as Sale[] | undefined) ??
+    [];
+
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">管理</h1>
+      {notice && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
+          {notice}
+        </p>
+      )}
       <SectionTabs value={section} items={sections} onChange={setSection} />
       {section === "products" && (
-        <ProductsPanel database={database} products={products} />
+        <ProductsPanel
+          database={database}
+          bundleItems={bundleItems}
+          events={eventRecords}
+          inventories={inventories}
+          products={products}
+          sales={sales}
+        />
       )}
       {section === "events" && <EventsPanel database={database} events={events} />}
       {section === "inventory" && (
@@ -121,16 +153,25 @@ export function ManagementPage({ database = appDatabase }: ManagementPageProps) 
 }
 
 function ProductsPanel({
+  bundleItems,
   database,
+  events,
+  inventories,
   products,
+  sales,
 }: {
+  bundleItems: BundleItem[];
   database: EventSalesDatabase;
+  events: Event[];
+  inventories: EventInventory[];
   products: Product[];
+  sales: Sale[];
 }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
   const [productGenre, setProductGenre] = useState<ProductGenre>("book");
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [productNotice, setProductNotice] = useState<string | null>(null);
 
   async function addProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -145,6 +186,7 @@ function ProductsPanel({
       defaultPrice: price,
       isActive: true,
     });
+    setProductNotice(null);
     resetProductForm();
   }
 
@@ -163,16 +205,42 @@ function ProductsPanel({
   }
 
   async function deleteProduct(productId: string) {
+    if (inventories.some((inventory) => inventory.productId === productId)) {
+      setProductNotice("在庫で使われている商品は削除できません。");
+      return;
+    }
+
+    if (bundleItems.some((item) => item.productId === productId)) {
+      setProductNotice("セットで使われている商品は削除できません。");
+      return;
+    }
+
+    const closedEventIds = new Set(
+      events.filter((event) => event.isClosed).map((event) => event.id),
+    );
+    const hasClosedEventSale = sales.some(
+      (sale) =>
+        !sale.canceled &&
+        closedEventIds.has(sale.eventId) &&
+        sale.lines.some((line) => saleLineIncludesProduct(line, productId)),
+    );
+    if (hasClosedEventSale) {
+      setProductNotice("終了済みイベントの売上に含まれる商品は削除できません。");
+      return;
+    }
+
     if (editingProductId === productId) {
       resetProductForm();
     }
 
+    setProductNotice(null);
     await database.products.delete(productId);
   }
 
   return (
     <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
       <h2 className="text-lg font-bold">商品</h2>
+      {productNotice && <NoticeMessage tone="warning" message={productNotice} />}
       <form className="grid gap-3" onSubmit={addProduct}>
         <TextField label="商品名" value={name} onChange={setName} />
         <NumberInput label="価格" value={price} onChange={setPrice} />
@@ -219,7 +287,9 @@ function EventsPanel({
   const [eventDate, setEventDate] = useState("");
   const [series, setSeries] = useState<Series>("comic-market");
   const [circleSpace, setCircleSpace] = useState("");
+  const [isClosed, setIsClosed] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [eventNotice, setEventNotice] = useState<string | null>(null);
 
   async function addEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -232,8 +302,10 @@ function EventsPanel({
       name: name.trim(),
       eventDate,
       series,
+      isClosed,
       ...(circleSpace.trim() ? { circleSpace: circleSpace.trim() } : {}),
     });
+    setEventNotice(null);
     resetEventForm();
   }
 
@@ -243,6 +315,7 @@ function EventsPanel({
     setEventDate(event.eventDate);
     setSeries(event.series);
     setCircleSpace(event.circleSpace ?? "");
+    setIsClosed(event.isClosed ?? false);
   }
 
   function resetEventForm() {
@@ -251,6 +324,7 @@ function EventsPanel({
     setEventDate("");
     setSeries("comic-market");
     setCircleSpace("");
+    setIsClosed(false);
   }
 
   async function deleteEvent(eventId: string) {
@@ -258,12 +332,16 @@ function EventsPanel({
       resetEventForm();
     }
 
-    await database.events.delete(eventId);
+    await database.events.update(eventId, { isHidden: true });
+    setEventNotice(
+      "イベントを非表示にしました。売上や経費の履歴は保持されています。",
+    );
   }
 
   return (
     <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
       <h2 className="text-lg font-bold">イベント</h2>
+      {eventNotice && <NoticeMessage tone="warning" message={eventNotice} />}
       <form className="grid gap-3" onSubmit={addEvent}>
         <TextField label="イベント名" value={name} onChange={setName} />
         <TextField
@@ -283,6 +361,11 @@ function EventsPanel({
           value={circleSpace}
           onChange={setCircleSpace}
         />
+        <CheckboxField
+          checked={isClosed}
+          label="イベント終了"
+          onChange={setIsClosed}
+        />
         <SubmitButton label={editingEventId ? "イベントを更新" : "イベントを追加"} />
         {editingEventId && (
           <button
@@ -300,10 +383,11 @@ function EventsPanel({
           const label = [event.name, event.eventDate, event.circleSpace]
             .filter(Boolean)
             .join(" / ");
+          const displayLabel = event.isClosed ? `${label} / 終了済み` : label;
 
           return {
             id: event.id,
-            label,
+            label: displayLabel,
             editLabel: `${event.name}を編集`,
             deleteLabel: `${event.name}を削除`,
             onEdit: () => startEditingEvent(event),
@@ -854,6 +938,28 @@ function SelectField({
   );
 }
 
+function CheckboxField({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex min-h-12 items-center gap-3 rounded-md border px-3">
+      <input
+        checked={checked}
+        className="h-5 w-5"
+        type="checkbox"
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span className="text-sm font-bold">{label}</span>
+    </label>
+  );
+}
+
 function SubmitButton({ label }: { label: string }) {
   return (
     <button
@@ -862,6 +968,25 @@ function SubmitButton({ label }: { label: string }) {
     >
       {label}
     </button>
+  );
+}
+
+function NoticeMessage({
+  message,
+  tone,
+}: {
+  message: string;
+  tone: "warning";
+}) {
+  const className =
+    tone === "warning"
+      ? "rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900"
+      : "";
+
+  return (
+    <p className={className} role="status">
+      {message}
+    </p>
   );
 }
 
@@ -917,6 +1042,14 @@ function ActionList({
 
 function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function saleLineIncludesProduct(line: Sale["lines"][number], productId: string): boolean {
+  if ((line.kind === "product" || line.kind === "reservation") && line.refId === productId) {
+    return true;
+  }
+
+  return line.components?.some((component) => component.productId === productId) ?? false;
 }
 
 function createBundleComponentDraft(): BundleComponentDraft {

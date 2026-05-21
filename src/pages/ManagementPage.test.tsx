@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { EventSalesDatabase } from "../db/database";
@@ -34,6 +34,143 @@ describe("ManagementPage", () => {
     expect(
       screen.getByRole("button", { name: "在庫を追加" }),
     ).toBeInTheDocument();
+  });
+
+  it("opens the requested management section", async () => {
+    render(<ManagementPage database={database} initialSection="events" />);
+
+    expect(await screen.findByRole("button", { name: "イベントを追加" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "商品を追加" })).not.toBeInTheDocument();
+  });
+
+  it("warns and hides an event instead of deleting it", async () => {
+    await database.events.put({
+      id: "event-1",
+      name: "削除対象イベント",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
+
+    render(<ManagementPage database={database} initialSection="events" />);
+
+    expect(await screen.findByText("削除対象イベント / 2026-11-23")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "削除対象イベントを削除" }));
+
+    expect(await screen.findByText("イベントを非表示にしました。売上や経費の履歴は保持されています。")).toBeInTheDocument();
+    expect(screen.queryByText("削除対象イベント / 2026-11-23")).not.toBeInTheDocument();
+    await expect(database.events.count()).resolves.toBe(1);
+    await expect(database.events.get("event-1")).resolves.toMatchObject({
+      id: "event-1",
+      isHidden: true,
+    });
+  });
+
+  it("blocks product deletion when inventory or bundle items reference it", async () => {
+    await database.events.put({
+      id: "event-1",
+      name: "イベント",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
+    await database.products.bulkPut([
+      {
+        id: "inventory-product",
+        name: "在庫あり商品",
+        productGenre: "book",
+        defaultPrice: 1000,
+        isActive: true,
+      },
+      {
+        id: "bundle-product",
+        name: "セット構成商品",
+        productGenre: "goods",
+        defaultPrice: 500,
+        isActive: true,
+      },
+    ]);
+    await database.eventInventories.put({
+      eventId: "event-1",
+      productId: "inventory-product",
+      initialStock: 10,
+      reservedStock: 0,
+    });
+    await database.bundles.put({
+      id: "bundle-1",
+      name: "セット",
+      price: 1200,
+      isActive: true,
+    });
+    await database.bundleItems.put({
+      bundleId: "bundle-1",
+      productId: "bundle-product",
+      quantity: 1,
+    });
+
+    render(<ManagementPage database={database} />);
+
+    await screen.findByText("在庫あり商品 / 1000円");
+    await userEvent.click(screen.getByRole("button", { name: "在庫あり商品を削除" }));
+    expect(screen.getByText("在庫で使われている商品は削除できません。")).toBeInTheDocument();
+    await expect(database.products.get("inventory-product")).resolves.toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "セット構成商品を削除" }));
+    expect(screen.getByText("セットで使われている商品は削除できません。")).toBeInTheDocument();
+    await expect(database.products.get("bundle-product")).resolves.toBeTruthy();
+  });
+
+  it("saves event closed state and blocks deleting products sold in closed events", async () => {
+    await database.events.put({
+      id: "event-1",
+      name: "終了済みイベント",
+      eventDate: "2026-11-23",
+      series: "other",
+      isClosed: true,
+    });
+    await database.products.put({
+      id: "sold-product",
+      name: "売上済み商品",
+      productGenre: "book",
+      defaultPrice: 1000,
+      isActive: true,
+    });
+    await database.sales.put({
+      id: "sale-1",
+      eventId: "event-1",
+      datetime: "2026-11-23T10:00:00+09:00",
+      totalAmount: 1000,
+      canceled: false,
+      lines: [
+        {
+          lineId: "product:sold-product",
+          kind: "product",
+          refId: "sold-product",
+          displayName: "売上済み商品",
+          productGenre: "book",
+          unitPrice: 1000,
+          quantity: 1,
+          subtotal: 1000,
+        },
+      ],
+    });
+
+    render(<ManagementPage database={database} />);
+
+    await screen.findByText("売上済み商品 / 1000円");
+    await userEvent.click(screen.getByRole("button", { name: "売上済み商品を削除" }));
+
+    expect(
+      screen.getByText("終了済みイベントの売上に含まれる商品は削除できません。"),
+    ).toBeInTheDocument();
+    await expect(database.products.get("sold-product")).resolves.toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: "イベント" }));
+    await userEvent.click(screen.getByRole("button", { name: "終了済みイベントを編集" }));
+    expect(screen.getByLabelText("イベント終了")).toBeChecked();
+    await userEvent.click(screen.getByLabelText("イベント終了"));
+    await userEvent.click(screen.getByRole("button", { name: "イベントを更新" }));
+    await expect(database.events.get("event-1")).resolves.toMatchObject({
+      isClosed: false,
+    });
   });
 
   it("adds product, event, inventory, expense, and bundle master data", async () => {
@@ -89,7 +226,9 @@ describe("ManagementPage", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "削除用イベントを削除" }),
     );
-    expect(screen.queryByText("削除用イベント / 2026-08-17")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("削除用イベント / 2026-08-17")).not.toBeInTheDocument();
+    });
 
     await userEvent.click(screen.getByRole("button", { name: "在庫" }));
     await userEvent.clear(screen.getByLabelText("初期在庫"));
@@ -167,14 +306,19 @@ describe("ManagementPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "セットを追加" }));
     expect(await screen.findByText(/削除用セット \/ 100円/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "削除用セットを削除" }));
-    expect(screen.queryByText(/削除用セット \/ 100円/)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/削除用セット \/ 100円/)).not.toBeInTheDocument();
+    });
 
     await expect(database.products.count()).resolves.toBe(2);
-    await expect(database.events.count()).resolves.toBe(1);
+    await expect(database.events.count()).resolves.toBe(2);
     await expect(database.eventInventories.count()).resolves.toBe(1);
     await expect(database.expenses.count()).resolves.toBe(1);
     await expect(database.bundles.count()).resolves.toBe(1);
-    await expect(database.events.toArray()).resolves.toMatchObject([
+    const visibleEvents = (await database.events.toArray()).filter(
+      (event) => !event.isHidden,
+    );
+    expect(visibleEvents).toMatchObject([
       { circleSpace: "東B-02b", name: "コミックマーケット106" },
     ]);
     await expect(database.eventInventories.toArray()).resolves.toMatchObject([

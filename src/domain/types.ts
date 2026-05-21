@@ -15,6 +15,8 @@ export interface Event {
   eventDate: string;
   series: Series;
   circleSpace?: string;
+  isClosed?: boolean;
+  isHidden?: boolean;
   memo?: string;
 }
 
