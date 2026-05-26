@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-main: #738dc2;
+  --color-sub: #a2d7dd;
+  --color-accent: #e593b4;
+  --color-page: #f8f9fd;
+  --color-card: #ffffff;
+  --color-text: #172033;
+  --color-muted: #667085;
+  --color-ok: #15803d;
+  --color-warn: #b45309;
+  --color-error: #b91c1c;
+  --shadow-card: 0 10px 24px rgb(33 45 76 / 0.14);
+  color-scheme: light;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--color-page);
+  color: var(--color-text);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.truncate-one-line {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
