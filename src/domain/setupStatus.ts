@@ -1,11 +1,6 @@
 import type { Bundle, Event, EventInventory, Product } from "./types";
 
-export type SetupStatusRowId =
-  | "events"
-  | "products"
-  | "bundles"
-  | "inventory"
-  | "checkout";
+export type SetupStatusRowId = "events" | "products" | "bundles" | "inventory";
 
 export type SetupStatusState = "complete" | "warning" | "missing";
 
@@ -71,8 +66,8 @@ export function buildSetupStatus({
       },
       {
         id: "products",
-        label: "商品",
-        detail: hasProducts ? "有効な商品があります" : "商品を登録してください",
+        label: "頒布物",
+        detail: hasProducts ? "有効な頒布物があります" : "頒布物を登録してください",
         count: activeProductCount,
         required: true,
         state: hasProducts ? "complete" : "missing",
@@ -92,13 +87,6 @@ export function buildSetupStatus({
         count: selectedEventInventoryCount,
         required: true,
         state: hasInventory ? "complete" : "missing",
-      },
-      {
-        id: "checkout",
-        label: "会計可能状態",
-        detail: checkoutReady ? "会計を開始できます" : "必須項目を登録してください",
-        required: true,
-        state: checkoutReady ? "complete" : "missing",
       },
     ],
   };

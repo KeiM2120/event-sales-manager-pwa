@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -35,7 +35,7 @@ describe("App", () => {
   it("switches between top-level screens", async () => {
     await database.events.put({
       id: "event-1",
-      name: "イベント1",
+      name: "イベント",
       eventDate: "2026-11-23",
       series: "other",
     });
@@ -52,7 +52,7 @@ describe("App", () => {
   it("guides checkout navigation to management when no inventory is registered", async () => {
     await database.events.put({
       id: "event-1",
-      name: "イベント1",
+      name: "イベント",
       eventDate: "2026-11-23",
       series: "other",
     });
@@ -98,8 +98,8 @@ describe("App", () => {
     await userEvent.selectOptions(await screen.findByLabelText("イベントを選択"), "event-2");
     await userEvent.click(screen.getByRole("button", { name: "会計" }));
 
-    expect(await screen.findByRole("heading", { name: "会計" })).toBeInTheDocument();
-    expect(screen.getByText("イベント2 / 2026-12-30")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "イベント2" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "頒布物一覧" })).toBeInTheDocument();
   });
 
   it("redirects checkout when the selected event has no inventory", async () => {
@@ -133,7 +133,7 @@ describe("App", () => {
   it("keeps newer navigation when checkout inventory guard resolves later", async () => {
     await database.events.put({
       id: "event-1",
-      name: "イベント1",
+      name: "イベント",
       eventDate: "2026-11-23",
       series: "other",
     });
@@ -182,13 +182,13 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "管理" })).toBeInTheDocument();
     });
-    expect(screen.queryByRole("heading", { name: "会計" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "頒布物一覧" })).not.toBeInTheDocument();
   });
 
   it("opens the matching management tab from setup status rows", async () => {
     await database.events.put({
       id: "event-1",
-      name: "イベント1",
+      name: "イベント",
       eventDate: "2026-11-23",
       series: "other",
     });
@@ -201,7 +201,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "管理" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "イベントを追加" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "商品を追加" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "頒布物を追加" })).not.toBeInTheDocument();
   });
 
   it("reflects management event, product, bundle, and inventory inputs on checkout", async () => {
@@ -210,47 +210,63 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "管理" }));
 
     await userEvent.click(screen.getByRole("button", { name: "イベント" }));
+    await openModal("イベントを追加");
     await userEvent.type(screen.getByLabelText("イベント名"), "コミティア150");
     await userEvent.type(screen.getByLabelText("開催日"), "2026-11-23");
-    await userEvent.type(screen.getByLabelText("サークルスペース"), "東1 え-01a");
-    await userEvent.click(screen.getByRole("button", { name: "イベントを追加" }));
-    expect(await screen.findByText("コミティア150 / 2026-11-23 / 東1 え-01a")).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("スペース"), "東1 う-01a");
+    await submitModal("イベントを追加");
+    expect(await screen.findByText("コミティア150")).toBeInTheDocument();
+    expect(screen.getByText("東1 う-01a")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "商品" }));
-    await userEvent.type(screen.getByLabelText("商品名"), "テスト新刊");
+    await userEvent.click(screen.getByRole("button", { name: "頒布物" }));
+    await openModal("頒布物を追加");
+    await userEvent.type(screen.getByLabelText("頒布物名"), "テスト新刊");
     await userEvent.clear(screen.getByLabelText("価格"));
     await userEvent.type(screen.getByLabelText("価格"), "1200");
-    await userEvent.click(screen.getByRole("button", { name: "商品を追加" }));
-    expect(await screen.findByText("テスト新刊 / 1200円")).toBeInTheDocument();
+    await submitModal("頒布物を追加");
+    expect(await screen.findByText("テスト新刊")).toBeInTheDocument();
+    expect(screen.getByText("1,200円")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "セット" }));
+    await openModal("セットを追加");
     await userEvent.type(screen.getByLabelText("セット名"), "会場限定セット");
     await userEvent.clear(screen.getByLabelText("セット価格"));
     await userEvent.type(screen.getByLabelText("セット価格"), "1500");
-    await userEvent.click(screen.getByRole("button", { name: "セットを追加" }));
-    expect(await screen.findByText(/会場限定セット \/ 1500円/)).toBeInTheDocument();
+    await submitModal("セットを追加");
+    expect(await screen.findByText("会場限定セット")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "在庫" }));
+    await openModal("在庫を追加");
     await userEvent.clear(screen.getByLabelText("初期在庫"));
     await userEvent.type(screen.getByLabelText("初期在庫"), "30");
     await userEvent.clear(screen.getByLabelText("取り置き数"));
     await userEvent.type(screen.getByLabelText("取り置き数"), "4");
-    await userEvent.click(screen.getByRole("button", { name: "在庫を追加" }));
-    expect(
-      await screen.findByText(/コミティア150 \/ テスト新刊 \/ 在庫30 \/ 取置4/),
-    ).toBeInTheDocument();
+    await submitModal("在庫を追加");
+    expect(await screen.findByText(/コミティア150 \/ テスト新刊/)).toBeInTheDocument();
+    expect(screen.getByText("在庫30 / 取置4")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "会計" }));
 
-    expect(await screen.findByRole("heading", { name: "会計" })).toBeInTheDocument();
-    expect(screen.getByText("コミティア150 / 2026-11-23 / 東1 え-01a")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "コミティア150" })).toBeInTheDocument();
+    expect(screen.getByText("東1 う-01a")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "テスト新刊を追加" })).toBeInTheDocument();
-    expect(
-      screen.getAllByText((content) =>
-        content.includes("1200円 / 初期 30 / 残り 26 / 取置 4"),
-      ),
-    ).toHaveLength(2);
+    expect(screen.getByRole("listitem", { name: "テスト新刊" })).toHaveTextContent(
+      "1,200円/残26",
+    );
     expect(screen.getByRole("button", { name: "取り置き テスト新刊を追加" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "会場限定セットを追加" })).toBeInTheDocument();
   });
 });
+
+async function openModal(buttonName: string) {
+  await userEvent.click(screen.getByRole("button", { name: buttonName }));
+}
+
+async function submitModal(buttonName: string) {
+  await userEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", { name: buttonName }),
+  );
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildProfitLossCsv,
   buildExpensesCsv,
   buildProductMovementCsv,
   buildSalesCsv,
@@ -161,6 +162,29 @@ describe("csv domain", () => {
         "saleId,datetime,lineId,sourceKind,sourceRefId,sourceDisplayName,productId,productName,productGenre,unitQuantity,lineQuantity,totalProductQuantity,canceled",
         "sale-bundle,2026-08-16T10:00:00+09:00,line-bundle,bundle,bundle-1,Starter Set,book,New Book,book,1,2,2,false",
         "sale-bundle,2026-08-16T10:00:00+09:00,line-bundle,bundle,bundle-1,Starter Set,badge,Badge,goods,3,2,6,false",
+      ].join("\n"),
+    );
+  });
+
+  it("builds a profit/loss CSV with summary rows and expense category breakdown", () => {
+    const csv = buildProfitLossCsv({
+      totalSales: 10000,
+      totalExpenses: 3600,
+      profit: 6400,
+      expenseBreakdown: [
+        { category: "printing", count: 2, amount: 3000 },
+        { category: "transport", count: 1, amount: 600 },
+      ],
+    });
+
+    expect(csv).toBe(
+      [
+        "売上,経費,利益",
+        "10000,3600,6400",
+        "",
+        "経費カテゴリ,件数,金額",
+        "printing,2,3000",
+        "transport,1,600",
       ].join("\n"),
     );
   });

@@ -10,12 +10,14 @@ const events: Event[] = [
     name: "コミティア150",
     eventDate: "2026-11-23",
     series: "other",
+    circleSpace: "東A-01a",
   },
   {
     id: "event-2",
     name: "文学フリマ東京",
     eventDate: "2026-12-06",
     series: "other",
+    isClosed: true,
   },
 ];
 
@@ -41,26 +43,7 @@ const inventories: EventInventory[] = [
 ];
 
 describe("HomePage", () => {
-  it("offers quick access to event-day screens with new props", async () => {
-    const onNavigate = vi.fn();
-    render(
-      <HomePage
-        events={events}
-        products={products}
-        bundles={bundles}
-        inventories={inventories}
-        selectedEventId="event-1"
-        onEventChange={vi.fn()}
-        onNavigate={onNavigate}
-      />,
-    );
-
-    expect(screen.getByRole("heading", { name: "ホーム" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "会計へ" }));
-    expect(onNavigate).toHaveBeenCalledWith("checkout");
-  });
-
-  it("shows and changes the selected event", async () => {
+  it("shows selected event and keeps event switching available", async () => {
     const onEventChange = vi.fn();
     render(
       <HomePage
@@ -74,17 +57,18 @@ describe("HomePage", () => {
       />,
     );
 
-    expect(screen.getByText("コミティア150")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "ホーム" })).toBeInTheDocument();
+    expect(screen.getByText("選択中イベント")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "コミティア150" })).toBeInTheDocument();
+    expect(screen.getByText("2026-11-23")).toBeInTheDocument();
+    expect(screen.getByText("東A-01a")).toBeInTheDocument();
 
-    await userEvent.selectOptions(
-      screen.getByLabelText("イベントを選択"),
-      "event-2",
-    );
+    await userEvent.selectOptions(screen.getByLabelText("イベントを選択"), "event-2");
 
     expect(onEventChange).toHaveBeenCalledWith("event-2");
   });
 
-  it("shows detailed setup status", async () => {
+  it("shows four setup rows and routes each row to the matching management tab", async () => {
     const onNavigate = vi.fn();
     render(
       <HomePage
@@ -98,45 +82,21 @@ describe("HomePage", () => {
       />,
     );
 
-    expect(screen.getByText("セットアップ状態")).toBeInTheDocument();
+    expect(screen.getByText("セットアップ状況")).toBeInTheDocument();
     expect(screen.getByText("イベント")).toBeInTheDocument();
-    expect(screen.getByText("商品")).toBeInTheDocument();
+    expect(screen.getByText("頒布物")).toBeInTheDocument();
     expect(screen.getByText("セット")).toBeInTheDocument();
     expect(screen.getByText("在庫")).toBeInTheDocument();
-    expect(screen.getByText("会計可能状態")).toBeInTheDocument();
+    expect(screen.queryByText("会計可能状況")).not.toBeInTheDocument();
     expect(screen.getByText("セットは任意です")).toBeInTheDocument();
-    expect(screen.getByText("会計を開始できます")).toBeInTheDocument();
     expect(screen.getByText("2件")).toBeInTheDocument();
     expect(screen.getAllByText("1件")).toHaveLength(2);
     expect(screen.getByText("0件")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "商品の管理タブへ" }));
-    expect(onNavigate).toHaveBeenCalledWith("management", {
-      managementSection: "products",
-    });
-  });
-
-  it("routes setup status rows to their matching management tabs", async () => {
-    const onNavigate = vi.fn();
-    render(
-      <HomePage
-        events={events}
-        products={products}
-        bundles={bundles}
-        inventories={inventories}
-        selectedEventId="event-1"
-        onEventChange={vi.fn()}
-        onNavigate={onNavigate}
-      />,
-    );
-
     await userEvent.click(screen.getByRole("button", { name: "イベントの管理タブへ" }));
-    await userEvent.click(screen.getByRole("button", { name: "商品の管理タブへ" }));
+    await userEvent.click(screen.getByRole("button", { name: "頒布物の管理タブへ" }));
     await userEvent.click(screen.getByRole("button", { name: "セットの管理タブへ" }));
     await userEvent.click(screen.getByRole("button", { name: "在庫の管理タブへ" }));
-    await userEvent.click(
-      screen.getByRole("button", { name: "会計可能状態の管理タブへ" }),
-    );
 
     expect(onNavigate).toHaveBeenNthCalledWith(1, "management", {
       managementSection: "events",
@@ -150,8 +110,37 @@ describe("HomePage", () => {
     expect(onNavigate).toHaveBeenNthCalledWith(4, "management", {
       managementSection: "inventory",
     });
-    expect(onNavigate).toHaveBeenNthCalledWith(5, "management", {
-      managementSection: "inventory",
-    });
+  });
+
+  it("uses a bottom checkout button that is enabled only when checkout is ready", async () => {
+    const onNavigate = vi.fn();
+    const { rerender } = render(
+      <HomePage
+        events={events}
+        products={products}
+        bundles={bundles}
+        inventories={inventories}
+        selectedEventId="event-1"
+        onEventChange={vi.fn()}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "会計へ進む" }));
+    expect(onNavigate).toHaveBeenCalledWith("checkout");
+
+    rerender(
+      <HomePage
+        events={events}
+        products={products}
+        bundles={bundles}
+        inventories={[]}
+        selectedEventId="event-1"
+        onEventChange={vi.fn()}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "会計へ進む" })).toBeDisabled();
   });
 });

@@ -5,7 +5,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ title, body }: EmptyStateProps) {
   return (
-    <div className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-center">
+    <div className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-center shadow-[var(--shadow-card)]">
       <p className="text-lg font-bold">{title}</p>
       {body && <p className="mt-2 text-sm text-slate-600">{body}</p>}
     </div>

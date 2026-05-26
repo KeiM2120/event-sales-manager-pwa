@@ -1,8 +1,35 @@
-export type Series = "comic-market" | "m3" | "techbookfest" | "other";
+export type Series =
+  | "comic-market"
+  | "doujin-original"
+  | "doujin-secondary-only"
+  | "other";
 
-export type ProductGenre = "book" | "goods" | "music" | "software" | "other";
+export type ProductGenre =
+  | "doujinshi-illustration"
+  | "doujinshi-manga"
+  | "doujinshi-anthology"
+  | "doujinshi-other"
+  | "goods-acrylic"
+  | "goods-paper"
+  | "goods-sticker"
+  | "goods-fabric"
+  | "goods-other"
+  | "digital"
+  | "other"
+  | "book"
+  | "goods"
+  | "music"
+  | "software";
 
 export type ExpenseCategory =
+  | "goods-production"
+  | "event-participation"
+  | "lodging"
+  | "shipping"
+  | "booth-supply"
+  | "food"
+  | "promotion"
+  | "outsourcing"
   | "printing"
   | "transport"
   | "space"

@@ -3,6 +3,7 @@ import {
   downloadCsv,
   downloadExpensesCsv,
   downloadProductMovementCsv,
+  downloadProfitLossCsv,
   downloadSalesDetailCsv,
   downloadSalesSummaryCsv,
 } from "./csvExportService";
@@ -69,12 +70,22 @@ describe("csvExportService", () => {
       downloader,
     });
     downloadExpensesCsv(expenses, { filename: "expenses.csv", downloader });
+    downloadProfitLossCsv(
+      {
+        totalSales: 1000,
+        totalExpenses: 300,
+        profit: 700,
+        expenseBreakdown: [{ category: "transport", count: 1, amount: 300 }],
+      },
+      { filename: "profit-loss.csv", downloader },
+    );
 
     expect(downloaded.map((item) => item.filename)).toEqual([
       "summary.csv",
       "detail.csv",
       "movement.csv",
       "expenses.csv",
+      "profit-loss.csv",
     ]);
     expect(downloaded[0]?.csv).toContain(
       "saleId,eventId,datetime,totalAmount,totalQuantity,canceled,lineCount",
@@ -86,6 +97,8 @@ describe("csvExportService", () => {
       "saleId,datetime,lineId,sourceKind",
     );
     expect(downloaded[3]?.csv).toContain("expenseId,eventId,category");
+    expect(downloaded[4]?.csv).toContain("売上,経費,利益");
+    expect(downloaded[4]?.csv).toContain("1000,300,700");
   });
 });
 

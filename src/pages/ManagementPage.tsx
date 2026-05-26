@@ -1,7 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Children, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { InlineActionButton, PrimaryActionBar, StatusChip } from "../components/DesignSystem";
+import { Modal } from "../components/Modal";
 import { SectionTabs } from "../components/SectionTabs";
 import { db as appDatabase, type EventSalesDatabase } from "../db/database";
+import { calculateBundleAvailability } from "../domain/inventory";
 import type {
   Bundle,
   BundleItem,
@@ -39,36 +42,58 @@ interface InventoryDraftKey {
   productId: string;
 }
 
+type ModalMode = "create" | "edit" | null;
+type CardTone = "sub" | "accent" | "neutral" | "muted";
+
 const sections: Array<{ value: ManagementSection; label: string }> = [
   { value: "events", label: "イベント" },
-  { value: "products", label: "商品" },
+  { value: "products", label: "頒布物" },
   { value: "bundles", label: "セット" },
   { value: "inventory", label: "在庫" },
   { value: "expenses", label: "経費" },
 ];
 
 const productGenres: Array<{ value: ProductGenre; label: string }> = [
-  { value: "book", label: "本" },
-  { value: "goods", label: "グッズ" },
-  { value: "music", label: "音楽" },
-  { value: "software", label: "ソフト" },
+  { value: "doujinshi-illustration", label: "同人誌/イラスト" },
+  { value: "doujinshi-manga", label: "同人誌/マンガ" },
+  { value: "doujinshi-anthology", label: "同人誌/合同" },
+  { value: "doujinshi-other", label: "同人誌/その他" },
+  { value: "goods-acrylic", label: "グッズ/アクリル" },
+  { value: "goods-paper", label: "グッズ/紙" },
+  { value: "goods-sticker", label: "グッズ/ステッカー" },
+  { value: "goods-fabric", label: "グッズ/布" },
+  { value: "goods-other", label: "グッズ/その他" },
+  { value: "digital", label: "デジタル頒布物" },
   { value: "other", label: "その他" },
 ];
 
 const seriesOptions: Array<{ value: Series; label: string }> = [
   { value: "comic-market", label: "コミックマーケット" },
-  { value: "m3", label: "M3" },
-  { value: "techbookfest", label: "技術書典" },
+  { value: "doujin-original", label: "同人イベント一次創作" },
+  { value: "doujin-secondary-only", label: "同人イベント二次創作/オンリー" },
   { value: "other", label: "その他" },
 ];
 
 const expenseCategories: Array<{ value: ExpenseCategory; label: string }> = [
   { value: "printing", label: "印刷費" },
+  { value: "goods-production", label: "グッズ作成費" },
+  { value: "event-participation", label: "イベント参加費" },
   { value: "transport", label: "交通費" },
-  { value: "space", label: "参加費" },
-  { value: "supply", label: "備品費" },
+  { value: "lodging", label: "宿泊・滞在費" },
+  { value: "shipping", label: "搬出入費" },
+  { value: "booth-supply", label: "ブース用備品" },
+  { value: "food", label: "飲食費" },
+  { value: "promotion", label: "宣伝・販売費" },
+  { value: "outsourcing", label: "外注費" },
   { value: "other", label: "その他" },
 ];
+
+const cardToneClasses: Record<CardTone, string> = {
+  sub: "border-l-[color:var(--color-sub)] bg-white",
+  accent: "border-l-[color:var(--color-accent)] bg-white",
+  neutral: "border-l-slate-300 bg-white",
+  muted: "border-l-slate-300 bg-slate-100 text-slate-500",
+};
 
 export function ManagementPage({
   database = appDatabase,
@@ -110,7 +135,7 @@ export function ManagementPage({
   }, [initialSection]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       <h1 className="text-2xl font-bold">管理</h1>
       {notice && (
         <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
@@ -132,9 +157,12 @@ export function ManagementPage({
       {section === "inventory" && (
         <InventoryPanel
           database={database}
+          bundleItems={bundleItems}
+          bundles={bundles}
           events={events}
           inventories={inventories}
           products={products}
+          sales={sales}
         />
       )}
       {section === "expenses" && (
@@ -167,13 +195,15 @@ function ProductsPanel({
   products: Product[];
   sales: Sale[];
 }) {
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
-  const [productGenre, setProductGenre] = useState<ProductGenre>("book");
+  const [productGenre, setProductGenre] = useState<ProductGenre>(
+    "doujinshi-illustration",
+  );
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [productNotice, setProductNotice] = useState<string | null>(null);
 
-  async function addProduct(event: FormEvent<HTMLFormElement>) {
+  async function saveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) {
       return;
@@ -186,8 +216,12 @@ function ProductsPanel({
       defaultPrice: price,
       isActive: true,
     });
-    setProductNotice(null);
-    resetProductForm();
+    closeModal();
+  }
+
+  function openAddModal() {
+    resetForm();
+    setModalMode("create");
   }
 
   function startEditingProduct(product: Product) {
@@ -195,83 +229,81 @@ function ProductsPanel({
     setName(product.name);
     setPrice(product.defaultPrice);
     setProductGenre(product.productGenre);
+    setModalMode("edit");
   }
 
-  function resetProductForm() {
+  function resetForm() {
     setEditingProductId(null);
     setName("");
     setPrice(0);
-    setProductGenre("book");
+    setProductGenre("doujinshi-illustration");
+  }
+
+  function closeModal() {
+    resetForm();
+    setModalMode(null);
   }
 
   async function deleteProduct(productId: string) {
-    if (inventories.some((inventory) => inventory.productId === productId)) {
-      setProductNotice("在庫で使われている商品は削除できません。");
-      return;
-    }
-
-    if (bundleItems.some((item) => item.productId === productId)) {
-      setProductNotice("セットで使われている商品は削除できません。");
-      return;
-    }
-
-    const closedEventIds = new Set(
-      events.filter((event) => event.isClosed).map((event) => event.id),
-    );
-    const hasClosedEventSale = sales.some(
-      (sale) =>
-        !sale.canceled &&
-        closedEventIds.has(sale.eventId) &&
-        sale.lines.some((line) => saleLineIncludesProduct(line, productId)),
-    );
-    if (hasClosedEventSale) {
-      setProductNotice("終了済みイベントの売上に含まれる商品は削除できません。");
-      return;
-    }
-
     if (editingProductId === productId) {
-      resetProductForm();
+      closeModal();
     }
 
-    setProductNotice(null);
     await database.products.delete(productId);
   }
 
   return (
-    <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
-      <h2 className="text-lg font-bold">商品</h2>
-      {productNotice && <NoticeMessage tone="warning" message={productNotice} />}
-      <form className="grid gap-3" onSubmit={addProduct}>
-        <TextField label="商品名" value={name} onChange={setName} />
-        <NumberInput label="価格" value={price} onChange={setPrice} />
-        <SelectField
-          label="ジャンル"
-          value={productGenre}
-          options={productGenres}
-          onChange={(value) => setProductGenre(value as ProductGenre)}
-        />
-        <SubmitButton label={editingProductId ? "商品を更新" : "商品を追加"} />
-        {editingProductId && (
-          <button
-            type="button"
-            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
-            onClick={resetProductForm}
-          >
-            編集をキャンセル
-          </button>
-        )}
-      </form>
-      <ActionList
-        emptyText="商品はまだありません。"
-        items={products.map((product) => ({
-          id: product.id,
-          label: `${product.name} / ${product.defaultPrice}円`,
-          editLabel: `${product.name}を編集`,
-          deleteLabel: `${product.name}を削除`,
-          onEdit: () => startEditingProduct(product),
-          onDelete: () => deleteProduct(product.id),
-        }))}
-      />
+    <section className="space-y-3">
+      <h2 className="text-lg font-bold">頒布物</h2>
+      <CardList emptyText="頒布物はまだありません。">
+        {products.map((product) => {
+          const deleteReason = getProductDeleteBlocker({
+            bundleItems,
+            events,
+            inventories,
+            productId: product.id,
+            sales,
+          });
+
+          return (
+            <ManagementCard
+              key={product.id}
+              title={product.name}
+              tone="sub"
+              meta={
+                <>
+                  <span>{formatYen(product.defaultPrice)}</span>
+                  <span>{getProductGenreLabel(product.productGenre)}</span>
+                </>
+              }
+              deleteReason={deleteReason}
+              editLabel={`${product.name}を編集`}
+              deleteLabel={`${product.name}を削除`}
+              onEdit={() => startEditingProduct(product)}
+              onDelete={() => deleteProduct(product.id)}
+            />
+          );
+        })}
+      </CardList>
+      <FixedAddAction label="頒布物を追加" onClick={openAddModal} />
+      {modalMode && (
+        <Modal
+          title={modalMode === "edit" ? "頒布物を編集" : "頒布物を追加"}
+          onClose={closeModal}
+        >
+          <form className="grid gap-3" onSubmit={saveProduct}>
+            <TextField label="頒布物名" value={name} onChange={setName} />
+            <NumberInput label="価格" value={price} onChange={setPrice} />
+            <SelectField
+              label="ジャンル"
+              value={productGenre}
+              options={productGenres}
+              onChange={(value) => setProductGenre(value as ProductGenre)}
+            />
+            <SubmitButton label={editingProductId ? "頒布物を更新" : "頒布物を追加"} />
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }
@@ -283,6 +315,7 @@ function EventsPanel({
   database: EventSalesDatabase;
   events: Event[];
 }) {
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [name, setName] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [series, setSeries] = useState<Series>("comic-market");
@@ -291,7 +324,7 @@ function EventsPanel({
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventNotice, setEventNotice] = useState<string | null>(null);
 
-  async function addEvent(event: FormEvent<HTMLFormElement>) {
+  async function saveEvent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim() || !eventDate) {
       return;
@@ -306,7 +339,12 @@ function EventsPanel({
       ...(circleSpace.trim() ? { circleSpace: circleSpace.trim() } : {}),
     });
     setEventNotice(null);
-    resetEventForm();
+    closeModal();
+  }
+
+  function openAddModal() {
+    resetForm();
+    setModalMode("create");
   }
 
   function startEditingEvent(event: Event) {
@@ -316,9 +354,10 @@ function EventsPanel({
     setSeries(event.series);
     setCircleSpace(event.circleSpace ?? "");
     setIsClosed(event.isClosed ?? false);
+    setModalMode("edit");
   }
 
-  function resetEventForm() {
+  function resetForm() {
     setEditingEventId(null);
     setName("");
     setEventDate("");
@@ -327,89 +366,99 @@ function EventsPanel({
     setIsClosed(false);
   }
 
+  function closeModal() {
+    resetForm();
+    setModalMode(null);
+  }
+
   async function deleteEvent(eventId: string) {
     if (editingEventId === eventId) {
-      resetEventForm();
+      closeModal();
     }
 
     await database.events.update(eventId, { isHidden: true });
-    setEventNotice(
-      "イベントを非表示にしました。売上や経費の履歴は保持されています。",
-    );
+    setEventNotice("イベントを非表示にしました。売上や経費の履歴は削除されません。");
   }
 
   return (
-    <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
+    <section className="space-y-3">
       <h2 className="text-lg font-bold">イベント</h2>
-      {eventNotice && <NoticeMessage tone="warning" message={eventNotice} />}
-      <form className="grid gap-3" onSubmit={addEvent}>
-        <TextField label="イベント名" value={name} onChange={setName} />
-        <TextField
-          label="開催日"
-          type="date"
-          value={eventDate}
-          onChange={setEventDate}
-        />
-        <SelectField
-          label="種別"
-          value={series}
-          options={seriesOptions}
-          onChange={(value) => setSeries(value as Series)}
-        />
-        <TextField
-          label="サークルスペース"
-          value={circleSpace}
-          onChange={setCircleSpace}
-        />
-        <CheckboxField
-          checked={isClosed}
-          label="イベント終了"
-          onChange={setIsClosed}
-        />
-        <SubmitButton label={editingEventId ? "イベントを更新" : "イベントを追加"} />
-        {editingEventId && (
-          <button
-            type="button"
-            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
-            onClick={resetEventForm}
-          >
-            編集をキャンセル
-          </button>
-        )}
-      </form>
-      <ActionList
-        emptyText="イベントはまだありません。"
-        items={events.map((event) => {
-          const label = [event.name, event.eventDate, event.circleSpace]
-            .filter(Boolean)
-            .join(" / ");
-          const displayLabel = event.isClosed ? `${label} / 終了済み` : label;
-
-          return {
-            id: event.id,
-            label: displayLabel,
-            editLabel: `${event.name}を編集`,
-            deleteLabel: `${event.name}を削除`,
-            onEdit: () => startEditingEvent(event),
-            onDelete: () => deleteEvent(event.id),
-          };
-        })}
-      />
+      {eventNotice && <NoticeMessage message={eventNotice} />}
+      <CardList emptyText="イベントはまだありません。">
+        {events.map((event) => (
+          <ManagementCard
+            key={event.id}
+            title={event.name}
+            tone="neutral"
+            meta={
+              <>
+                <span>{event.eventDate}</span>
+                {event.circleSpace ? <span>{event.circleSpace}</span> : null}
+                <span>{getSeriesLabel(event.series)}</span>
+                {event.isClosed ? <StatusChip tone="muted">終了済み</StatusChip> : null}
+              </>
+            }
+            editLabel={`${event.name}を編集`}
+            deleteLabel={`${event.name}を削除`}
+            onEdit={() => startEditingEvent(event)}
+            onDelete={() => deleteEvent(event.id)}
+          />
+        ))}
+      </CardList>
+      <FixedAddAction label="イベントを追加" onClick={openAddModal} />
+      {modalMode && (
+        <Modal
+          title={modalMode === "edit" ? "イベントを編集" : "イベントを追加"}
+          onClose={closeModal}
+        >
+          <form className="grid gap-3" onSubmit={saveEvent}>
+            <TextField label="イベント名" value={name} onChange={setName} />
+            <TextField
+              label="開催日"
+              type="date"
+              value={eventDate}
+              onChange={setEventDate}
+            />
+            <SelectField
+              label="種別"
+              value={series}
+              options={seriesOptions}
+              onChange={(value) => setSeries(value as Series)}
+            />
+            <TextField label="スペース" value={circleSpace} onChange={setCircleSpace} />
+            {modalMode === "edit" && (
+              <CheckboxField
+                checked={isClosed}
+                label="イベント終了"
+                onChange={setIsClosed}
+              />
+            )}
+            <SubmitButton label={editingEventId ? "イベントを更新" : "イベントを追加"} />
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }
 
 function InventoryPanel({
+  bundleItems,
+  bundles,
   database,
   events,
   inventories,
   products,
+  sales,
 }: {
+  bundleItems: BundleItem[];
+  bundles: Bundle[];
   database: EventSalesDatabase;
   events: Event[];
   inventories: EventInventory[];
   products: Product[];
+  sales: Sale[];
 }) {
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [eventId, setEventId] = useState("");
   const [productId, setProductId] = useState("");
   const [initialStock, setInitialStock] = useState(0);
@@ -421,7 +470,7 @@ function InventoryPanel({
   const selectedEventId = eventId || (events[0]?.id ?? "");
   const selectedProductId = productId || (products[0]?.id ?? "");
 
-  async function addInventory(event: FormEvent<HTMLFormElement>) {
+  async function saveInventory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedEventId || !selectedProductId) {
       return;
@@ -445,7 +494,12 @@ function InventoryPanel({
       reservedStock,
       ...(reservationMemo.trim() ? { reservationMemo: reservationMemo.trim() } : {}),
     });
-    resetInventoryForm();
+    closeModal();
+  }
+
+  function openAddModal() {
+    resetForm();
+    setModalMode("create");
   }
 
   function startEditingInventory(inventory: EventInventory) {
@@ -458,9 +512,10 @@ function InventoryPanel({
     setInitialStock(inventory.initialStock);
     setReservedStock(inventory.reservedStock);
     setReservationMemo(inventory.reservationMemo ?? "");
+    setModalMode("edit");
   }
 
-  function resetInventoryForm() {
+  function resetForm() {
     setEditingInventoryKey(null);
     setEventId("");
     setProductId("");
@@ -469,76 +524,120 @@ function InventoryPanel({
     setReservationMemo("");
   }
 
+  function closeModal() {
+    resetForm();
+    setModalMode(null);
+  }
+
   async function deleteInventory(inventory: EventInventory) {
     if (
       editingInventoryKey?.eventId === inventory.eventId &&
       editingInventoryKey.productId === inventory.productId
     ) {
-      resetInventoryForm();
+      closeModal();
     }
 
     await database.eventInventories.delete([inventory.eventId, inventory.productId]);
   }
 
   return (
-    <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
+    <section className="space-y-3">
       <h2 className="text-lg font-bold">在庫</h2>
-      <form className="grid gap-3" onSubmit={addInventory}>
-        <SelectField
-          label="対象イベント"
-          value={selectedEventId}
-          options={events.map((item) => ({ value: item.id, label: item.name }))}
-          onChange={setEventId}
-        />
-        <SelectField
-          label="対象商品"
-          value={selectedProductId}
-          options={products.map((item) => ({ value: item.id, label: item.name }))}
-          onChange={setProductId}
-        />
-        <NumberInput label="初期在庫" value={initialStock} onChange={setInitialStock} />
-        <NumberInput label="取り置き数" value={reservedStock} onChange={setReservedStock} />
-        <TextField
-          label="取り置きメモ"
-          value={reservationMemo}
-          onChange={setReservationMemo}
-        />
-        <SubmitButton label={editingInventoryKey ? "在庫を更新" : "在庫を追加"} />
-        {editingInventoryKey && (
-          <button
-            type="button"
-            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
-            onClick={resetInventoryForm}
-          >
-            編集をキャンセル
-          </button>
-        )}
-      </form>
-      <ActionList
-        emptyText="在庫はまだありません。"
-        items={inventories.map((inventory) => {
-          const eventName =
-            events.find((item) => item.id === inventory.eventId)?.name ??
-            inventory.eventId;
-          const productName =
-            products.find((item) => item.id === inventory.productId)?.name ??
-            inventory.productId;
+      <CardList emptyText="在庫はまだありません。">
+        {inventories.map((inventory) => {
+          const eventName = getEventName(events, inventory.eventId);
+          const productName = getProductName(products, inventory.productId);
 
-          return {
-            id: `${inventory.eventId}:${inventory.productId}`,
-            label: [
-              `${eventName} / ${productName} / 在庫${inventory.initialStock} / 取置${inventory.reservedStock}`,
-              inventory.reservationMemo,
-            ]
-              .filter(Boolean)
-              .join(" / "),
-            editLabel: `${eventName}の在庫を編集`,
-            deleteLabel: `${eventName}の在庫を削除`,
-            onEdit: () => startEditingInventory(inventory),
-            onDelete: () => deleteInventory(inventory),
-          };
+          return (
+            <ManagementCard
+              key={`${inventory.eventId}:${inventory.productId}`}
+              title={`${eventName} / ${productName}`}
+              tone="sub"
+              meta={
+                <>
+                  <span>{`在庫${inventory.initialStock} / 取置${inventory.reservedStock}`}</span>
+                  {inventory.reservationMemo ? <span>{inventory.reservationMemo}</span> : null}
+                </>
+              }
+              editLabel={`${eventName}の在庫を編集`}
+              deleteLabel={`${eventName}の在庫を削除`}
+              onEdit={() => startEditingInventory(inventory)}
+              onDelete={() => deleteInventory(inventory)}
+            />
+          );
         })}
-      />
+        {events.flatMap((event) =>
+          bundles
+            .filter((bundle) => bundle.isActive)
+            .map((bundle) => {
+              const eventInventories = inventories.filter(
+                (inventory) => inventory.eventId === event.id,
+              );
+              const eventSales = sales.filter((sale) => sale.eventId === event.id);
+              const availability = calculateBundleAvailability({
+                bundleId: bundle.id,
+                bundleItems,
+                inventories: eventInventories,
+                sales: eventSales,
+              });
+
+              return (
+                <li
+                  key={`${event.id}:${bundle.id}:availability`}
+                  className={[
+                    "rounded-lg border-l-[6px] p-4 shadow-[var(--shadow-card)] ring-1 ring-slate-200",
+                    availability.availableQuantity === 0
+                      ? cardToneClasses.muted
+                      : cardToneClasses.accent,
+                  ].join(" ")}
+                >
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate-one-line text-base font-bold">{bundle.name}</h3>
+                      <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm font-bold text-[color:var(--color-muted)]">
+                        <span>{event.name}</span>
+                        <span>{`取扱可能数 ${availability.availableQuantity}`}</span>
+                      </p>
+                      <p className="mt-2 text-sm font-medium text-[color:var(--color-muted)]">
+                        セット内容はセットタブで編集
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              );
+            }),
+        )}
+      </CardList>
+      <FixedAddAction label="在庫を追加" onClick={openAddModal} />
+      {modalMode && (
+        <Modal
+          title={modalMode === "edit" ? "在庫を編集" : "在庫を追加"}
+          onClose={closeModal}
+        >
+          <form className="grid gap-3" onSubmit={saveInventory}>
+            <SelectField
+              label="対象イベント"
+              value={selectedEventId}
+              options={events.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={setEventId}
+            />
+            <SelectField
+              label="対象頒布物"
+              value={selectedProductId}
+              options={products.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={setProductId}
+            />
+            <NumberInput label="初期在庫" value={initialStock} onChange={setInitialStock} />
+            <NumberInput label="取り置き数" value={reservedStock} onChange={setReservedStock} />
+            <TextField
+              label="取り置きメモ"
+              value={reservationMemo}
+              onChange={setReservationMemo}
+            />
+            <SubmitButton label={editingInventoryKey ? "在庫を更新" : "在庫を追加"} />
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }
@@ -552,6 +651,7 @@ function ExpensesPanel({
   events: Event[];
   expenses: Expense[];
 }) {
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [eventId, setEventId] = useState("");
   const [category, setCategory] = useState<ExpenseCategory>("printing");
   const [payee, setPayee] = useState("");
@@ -559,7 +659,7 @@ function ExpensesPanel({
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const selectedEventId = eventId || (events[0]?.id ?? "");
 
-  async function addExpense(event: FormEvent<HTMLFormElement>) {
+  async function saveExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedEventId || !payee.trim()) {
       return;
@@ -572,7 +672,12 @@ function ExpensesPanel({
       payee: payee.trim(),
       amount,
     });
-    resetExpenseForm();
+    closeModal();
+  }
+
+  function openAddModal() {
+    resetForm();
+    setModalMode("create");
   }
 
   function startEditingExpense(expense: Expense) {
@@ -581,9 +686,10 @@ function ExpensesPanel({
     setCategory(expense.category);
     setPayee(expense.payee);
     setAmount(expense.amount);
+    setModalMode("edit");
   }
 
-  function resetExpenseForm() {
+  function resetForm() {
     setEditingExpenseId(null);
     setEventId("");
     setCategory("printing");
@@ -591,54 +697,67 @@ function ExpensesPanel({
     setAmount(0);
   }
 
+  function closeModal() {
+    resetForm();
+    setModalMode(null);
+  }
+
   async function deleteExpense(expenseId: string) {
     if (editingExpenseId === expenseId) {
-      resetExpenseForm();
+      closeModal();
     }
 
     await database.expenses.delete(expenseId);
   }
 
   return (
-    <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
+    <section className="space-y-3">
       <h2 className="text-lg font-bold">経費</h2>
-      <form className="grid gap-3" onSubmit={addExpense}>
-        <SelectField
-          label="対象イベント"
-          value={selectedEventId}
-          options={events.map((item) => ({ value: item.id, label: item.name }))}
-          onChange={setEventId}
-        />
-        <SelectField
-          label="カテゴリ"
-          value={category}
-          options={expenseCategories}
-          onChange={(value) => setCategory(value as ExpenseCategory)}
-        />
-        <TextField label="支払先" value={payee} onChange={setPayee} />
-        <NumberInput label="金額" value={amount} onChange={setAmount} />
-        <SubmitButton label={editingExpenseId ? "経費を更新" : "経費を追加"} />
-        {editingExpenseId && (
-          <button
-            type="button"
-            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
-            onClick={resetExpenseForm}
-          >
-            編集をキャンセル
-          </button>
-        )}
-      </form>
-      <ActionList
-        emptyText="経費はまだありません。"
-        items={expenses.map((expense) => ({
-          id: expense.id,
-          label: `${expense.payee} / ${expense.amount}円`,
-          editLabel: `${expense.payee}を編集`,
-          deleteLabel: `${expense.payee}を削除`,
-          onEdit: () => startEditingExpense(expense),
-          onDelete: () => deleteExpense(expense.id),
-        }))}
-      />
+      <CardList emptyText="経費はまだありません。">
+        {expenses.map((expense) => (
+          <ManagementCard
+            key={expense.id}
+            title={expense.payee}
+            tone="neutral"
+            meta={
+              <>
+                <span>{getEventName(events, expense.eventId)}</span>
+                <span>{getExpenseCategoryLabel(expense.category)}</span>
+                <span>{formatYen(expense.amount)}</span>
+              </>
+            }
+            editLabel={`${expense.payee}を編集`}
+            deleteLabel={`${expense.payee}を削除`}
+            onEdit={() => startEditingExpense(expense)}
+            onDelete={() => deleteExpense(expense.id)}
+          />
+        ))}
+      </CardList>
+      <FixedAddAction label="経費を追加" onClick={openAddModal} />
+      {modalMode && (
+        <Modal
+          title={modalMode === "edit" ? "経費を編集" : "経費を追加"}
+          onClose={closeModal}
+        >
+          <form className="grid gap-3" onSubmit={saveExpense}>
+            <SelectField
+              label="対象イベント"
+              value={selectedEventId}
+              options={events.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={setEventId}
+            />
+            <SelectField
+              label="カテゴリ"
+              value={category}
+              options={expenseCategories}
+              onChange={(value) => setCategory(value as ExpenseCategory)}
+            />
+            <TextField label="支払先" value={payee} onChange={setPayee} />
+            <NumberInput label="金額" value={amount} onChange={setAmount} />
+            <SubmitButton label={editingExpenseId ? "経費を更新" : "経費を追加"} />
+          </form>
+        </Modal>
+      )}
     </section>
   );
 }
@@ -654,6 +773,7 @@ function BundlesPanel({
   bundles: Bundle[];
   products: Product[];
 }) {
+  const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
   const [components, setComponents] = useState<BundleComponentDraft[]>(() => [
@@ -690,7 +810,7 @@ function BundlesPanel({
     );
   }
 
-  async function addBundle(event: FormEvent<HTMLFormElement>) {
+  async function saveBundle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) {
       return;
@@ -700,11 +820,11 @@ function BundlesPanel({
     const fallbackProductId = products[0]?.id ?? "";
     const componentQuantities = new Map<string, number>();
     for (const component of components) {
-      const productId = component.productId || fallbackProductId;
-      if (productId) {
+      const nextProductId = component.productId || fallbackProductId;
+      if (nextProductId) {
         componentQuantities.set(
-          productId,
-          (componentQuantities.get(productId) ?? 0) + component.quantity,
+          nextProductId,
+          (componentQuantities.get(nextProductId) ?? 0) + component.quantity,
         );
       }
     }
@@ -721,15 +841,20 @@ function BundlesPanel({
         await database.bundleItems.where("bundleId").equals(bundleId).delete();
       }
 
-      for (const [productId, quantity] of componentQuantities) {
+      for (const [nextProductId, quantity] of componentQuantities) {
         await database.bundleItems.add({
           bundleId,
-          productId,
+          productId: nextProductId,
           quantity,
         });
       }
     });
-    resetBundleForm();
+    closeModal();
+  }
+
+  function openAddModal() {
+    resetForm();
+    setModalMode("create");
   }
 
   function startEditingBundle(bundle: Bundle) {
@@ -747,18 +872,24 @@ function BundlesPanel({
     setComponents(
       bundleComponents.length > 0 ? bundleComponents : [createBundleComponentDraft()],
     );
+    setModalMode("edit");
   }
 
-  function resetBundleForm() {
+  function resetForm() {
     setEditingBundleId(null);
     setName("");
     setPrice(0);
     setComponents([createBundleComponentDraft()]);
   }
 
+  function closeModal() {
+    resetForm();
+    setModalMode(null);
+  }
+
   async function deleteBundle(bundleId: string) {
     if (editingBundleId === bundleId) {
-      resetBundleForm();
+      closeModal();
     }
 
     await database.transaction("rw", database.bundles, database.bundleItems, async () => {
@@ -768,96 +899,188 @@ function BundlesPanel({
   }
 
   return (
-    <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
+    <section className="space-y-3">
       <h2 className="text-lg font-bold">セット</h2>
-      <form className="grid gap-3" onSubmit={addBundle}>
-        <TextField label="セット名" value={name} onChange={setName} />
-        <NumberInput label="セット価格" value={price} onChange={setPrice} />
-        <div className="space-y-2" aria-label="構成商品一覧">
-          {components.map((component, index) => {
-            const rowNumber = index + 1;
-            const selectedProductId = component.productId || (products[0]?.id ?? "");
-
-            return (
-              <div
-                key={component.id}
-                className="grid gap-2 rounded-md bg-slate-100 p-3"
-              >
-                <SelectField
-                  label={`構成商品${rowNumber}`}
-                  value={selectedProductId}
-                  options={products.map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                  }))}
-                  onChange={(productId) =>
-                    updateComponentProduct(component.id, productId)
-                  }
-                />
-                <NumberInput
-                  label={`構成数量${rowNumber}`}
-                  value={component.quantity}
-                  onChange={(quantity) =>
-                    updateComponentQuantity(component.id, quantity)
-                  }
-                />
-                {components.length > 1 && (
-                  <button
-                    type="button"
-                    className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700"
-                    onClick={() => removeComponent(component.id)}
-                  >
-                    構成商品{rowNumber}を取り消し
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800"
-            onClick={addComponent}
-          >
-            構成商品を追加
-          </button>
-        </div>
-        <SubmitButton label={editingBundleId ? "セットを更新" : "セットを追加"} />
-        {editingBundleId && (
-          <button
-            type="button"
-            className="min-h-12 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
-            onClick={resetBundleForm}
-          >
-            編集をキャンセル
-          </button>
-        )}
-      </form>
-      <ActionList
-        emptyText="セットはまだありません。"
-        items={bundles.map((bundle) => {
+      <CardList emptyText="セットはまだありません。">
+        {bundles.map((bundle) => {
           const componentLabels = bundleItems
             .filter((item) => item.bundleId === bundle.id)
             .map((componentItem) => {
-              const componentName =
-                products.find((item) => item.id === componentItem.productId)?.name ??
-                componentItem.productId;
-
+              const componentName = getProductName(products, componentItem.productId);
               return `${componentName} x${componentItem.quantity}`;
             });
 
-          return {
-            id: bundle.id,
-            label: componentLabels.length > 0
-              ? `${bundle.name} / ${bundle.price}円 / ${componentLabels.join(", ")}`
-              : `${bundle.name} / ${bundle.price}円`,
-            editLabel: `${bundle.name}を編集`,
-            deleteLabel: `${bundle.name}を削除`,
-            onEdit: () => startEditingBundle(bundle),
-            onDelete: () => deleteBundle(bundle.id),
-          };
+          return (
+            <ManagementCard
+              key={bundle.id}
+              title={bundle.name}
+              tone="accent"
+              meta={
+                <>
+                  <span>{formatYen(bundle.price)}</span>
+                  {componentLabels.length > 0 ? (
+                    <span>{componentLabels.join(" / ")}</span>
+                  ) : null}
+                </>
+              }
+              editLabel={`${bundle.name}を編集`}
+              deleteLabel={`${bundle.name}を削除`}
+              onEdit={() => startEditingBundle(bundle)}
+              onDelete={() => deleteBundle(bundle.id)}
+            />
+          );
         })}
-      />
+      </CardList>
+      <FixedAddAction label="セットを追加" onClick={openAddModal} />
+      {modalMode && (
+        <Modal
+          title={modalMode === "edit" ? "セットを編集" : "セットを追加"}
+          onClose={closeModal}
+        >
+          <form className="grid gap-3" onSubmit={saveBundle}>
+            <TextField label="セット名" value={name} onChange={setName} />
+            <NumberInput label="セット価格" value={price} onChange={setPrice} />
+            <div className="space-y-2" aria-label="構成頒布物一覧">
+              {components.map((component, index) => {
+                const rowNumber = index + 1;
+                const selectedProductId = component.productId || (products[0]?.id ?? "");
+
+                return (
+                  <div
+                    key={component.id}
+                    className="grid gap-2 rounded-md bg-slate-100 p-3"
+                  >
+                    <SelectField
+                      label={`構成頒布物${rowNumber}`}
+                      value={selectedProductId}
+                      options={products.map((item) => ({
+                        value: item.id,
+                        label: item.name,
+                      }))}
+                      onChange={(nextProductId) =>
+                        updateComponentProduct(component.id, nextProductId)
+                      }
+                    />
+                    <NumberInput
+                      label={`構成数量${rowNumber}`}
+                      value={component.quantity}
+                      onChange={(quantity) =>
+                        updateComponentQuantity(component.id, quantity)
+                      }
+                    />
+                    {components.length > 1 && (
+                      <button
+                        type="button"
+                        className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-700"
+                        onClick={() => removeComponent(component.id)}
+                      >
+                        構成頒布物{rowNumber}を取り消し
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                className="min-h-11 rounded-md border border-slate-300 bg-white px-4 text-sm font-bold text-slate-800"
+                onClick={addComponent}
+              >
+                構成頒布物を追加
+              </button>
+            </div>
+            <SubmitButton label={editingBundleId ? "セットを更新" : "セットを追加"} />
+          </form>
+        </Modal>
+      )}
     </section>
+  );
+}
+
+function FixedAddAction({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <PrimaryActionBar>
+      <InlineActionButton tone="main" onClick={onClick}>
+        {label}
+      </InlineActionButton>
+    </PrimaryActionBar>
+  );
+}
+
+function CardList({
+  children,
+  emptyText,
+}: {
+  children: ReactNode;
+  emptyText: string;
+}) {
+  if (Children.count(children) === 0) {
+    return <p className="text-sm text-slate-600">{emptyText}</p>;
+  }
+
+  return <ul className="space-y-2">{children}</ul>;
+}
+
+function ManagementCard({
+  deleteLabel,
+  deleteReason,
+  editLabel,
+  meta,
+  onDelete,
+  onEdit,
+  title,
+  tone,
+}: {
+  deleteLabel: string;
+  deleteReason?: string | null;
+  editLabel: string;
+  meta: ReactNode;
+  onDelete: () => void;
+  onEdit: () => void;
+  title: string;
+  tone: CardTone;
+}) {
+  return (
+    <li
+      className={[
+        "rounded-lg border-l-[6px] p-4 shadow-[var(--shadow-card)] ring-1 ring-slate-200",
+        cardToneClasses[tone],
+      ].join(" ")}
+    >
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="min-w-0">
+          <h3 className="truncate-one-line text-base font-bold text-[color:var(--color-text)]">
+            {title}
+          </h3>
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-bold text-[color:var(--color-muted)]">
+            {meta}
+          </p>
+          {deleteReason ? (
+            <p className="mt-2 text-sm font-bold text-[color:var(--color-error)]">
+              {deleteReason}
+            </p>
+          ) : null}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            className="min-h-11 rounded-md border border-slate-300 bg-white px-4 font-bold text-slate-800"
+            aria-label={editLabel}
+            onClick={onEdit}
+          >
+            編集
+          </button>
+          <button
+            type="button"
+            className="min-h-11 rounded-md border border-red-200 bg-white px-4 font-bold text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label={deleteLabel}
+            disabled={Boolean(deleteReason)}
+            onClick={onDelete}
+          >
+            削除
+          </button>
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -971,73 +1194,75 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-function NoticeMessage({
-  message,
-  tone,
-}: {
-  message: string;
-  tone: "warning";
-}) {
-  const className =
-    tone === "warning"
-      ? "rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900"
-      : "";
-
+function NoticeMessage({ message }: { message: string }) {
   return (
-    <p className={className} role="status">
+    <p
+      className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900"
+      role="status"
+    >
       {message}
     </p>
   );
 }
 
-function ActionList({
-  emptyText,
-  items,
+function getProductDeleteBlocker({
+  bundleItems,
+  events,
+  inventories,
+  productId,
+  sales,
 }: {
-  emptyText: string;
-  items: Array<{
-    id: string;
-    label: string;
-    editLabel: string;
-    deleteLabel: string;
-    onEdit: () => void;
-    onDelete: () => void;
-  }>;
-}) {
-  if (items.length === 0) {
-    return <p className="text-sm text-slate-600">{emptyText}</p>;
+  bundleItems: BundleItem[];
+  events: Event[];
+  inventories: EventInventory[];
+  productId: string;
+  sales: Sale[];
+}): string | null {
+  if (
+    inventories.some((inventory) => inventory.productId === productId) ||
+    bundleItems.some((item) => item.productId === productId)
+  ) {
+    return "在庫・セットで使われているため削除できません";
   }
 
-  return (
-    <ul className="space-y-2">
-      {items.map((item) => (
-        <li
-          key={item.id}
-          className="grid items-center gap-2 rounded-md bg-slate-100 px-3 py-2 text-sm sm:grid-cols-[1fr_auto]"
-        >
-          <span className="flex items-center">{item.label}</span>
-          <span className="grid grid-cols-2 items-center gap-2">
-            <button
-              type="button"
-              className="min-h-10 rounded-md border border-slate-300 bg-white px-3 font-bold text-slate-800"
-              aria-label={item.editLabel}
-              onClick={item.onEdit}
-            >
-              編集
-            </button>
-            <button
-              type="button"
-              className="min-h-10 rounded-md border border-red-200 bg-white px-3 font-bold text-red-700"
-              aria-label={item.deleteLabel}
-              onClick={item.onDelete}
-            >
-              削除
-            </button>
-          </span>
-        </li>
-      ))}
-    </ul>
+  const closedEventIds = new Set(
+    events.filter((event) => event.isClosed).map((event) => event.id),
   );
+  const hasClosedEventSale = sales.some(
+    (sale) =>
+      !sale.canceled &&
+      closedEventIds.has(sale.eventId) &&
+      sale.lines.some((line) => saleLineIncludesProduct(line, productId)),
+  );
+  if (hasClosedEventSale) {
+    return "終了済みイベントの売上に含まれるため削除できません";
+  }
+
+  return null;
+}
+
+function getProductGenreLabel(value: ProductGenre): string {
+  return productGenres.find((option) => option.value === value)?.label ?? value;
+}
+
+function getSeriesLabel(value: Series): string {
+  return seriesOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function getExpenseCategoryLabel(value: ExpenseCategory): string {
+  return expenseCategories.find((option) => option.value === value)?.label ?? value;
+}
+
+function getEventName(events: Event[], eventId: string): string {
+  return events.find((event) => event.id === eventId)?.name ?? eventId;
+}
+
+function getProductName(products: Product[], productId: string): string {
+  return products.find((product) => product.id === productId)?.name ?? productId;
+}
+
+function formatYen(value: number): string {
+  return `${value.toLocaleString("ja-JP")}円`;
 }
 
 function createId(prefix: string): string {

@@ -1,8 +1,10 @@
 import {
   buildExpensesCsv,
   buildProductMovementCsv,
+  buildProfitLossCsv,
   buildSalesDetailCsv,
   buildSalesSummaryCsv,
+  type ProfitLossCsvInput,
 } from "../domain/csv";
 import type { Expense, Sale } from "../domain/types";
 
@@ -63,6 +65,13 @@ export function downloadExpensesCsv(
   options: CsvExportOptions,
 ): void {
   exportCsv(options, buildExpensesCsv(expenses));
+}
+
+export function downloadProfitLossCsv(
+  input: ProfitLossCsvInput,
+  options: CsvExportOptions,
+): void {
+  exportCsv(options, buildProfitLossCsv(input));
 }
 
 function exportCsv(options: CsvExportOptions, csv: string): void {

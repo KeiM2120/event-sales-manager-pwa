@@ -13,6 +13,7 @@ export interface CheckoutItemInput {
   displayName: string;
   productGenre: ProductGenre;
   unitPrice: number;
+  maxQuantity?: number;
   components?: CheckoutLineComponent[];
 }
 
@@ -38,8 +39,20 @@ export function checkoutReducer(
 ): CheckoutState {
   switch (action.type) {
     case "addLine": {
+      if (action.item.maxQuantity !== undefined && action.item.maxQuantity <= 0) {
+        return state;
+      }
+
       const lineId = createLineId(action.item);
       const existingLine = state.lines.find((line) => line.lineId === lineId);
+      if (
+        existingLine &&
+        action.item.maxQuantity !== undefined &&
+        existingLine.quantity >= action.item.maxQuantity
+      ) {
+        return state;
+      }
+
       const lines = existingLine
         ? state.lines.map((line) =>
             line.lineId === lineId ? updateQuantity(line, line.quantity + 1) : line,

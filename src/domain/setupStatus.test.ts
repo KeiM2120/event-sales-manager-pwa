@@ -47,12 +47,37 @@ describe("buildSetupStatus", () => {
     expect(status.checkoutReady).toBe(true);
     expect(status.selectedEvent?.name).toBe("コミティア150");
     expect(status.rows).toEqual([
-      expect.objectContaining({ id: "events", state: "complete", count: 1 }),
-      expect.objectContaining({ id: "products", state: "complete", count: 1 }),
-      expect.objectContaining({ id: "bundles", state: "complete", count: 1 }),
-      expect.objectContaining({ id: "inventory", state: "complete", count: 1 }),
-      expect.objectContaining({ id: "checkout", state: "complete" }),
+      expect.objectContaining({
+        id: "events",
+        label: "イベント",
+        detail: "登録済み",
+        state: "complete",
+        count: 1,
+      }),
+      expect.objectContaining({
+        id: "products",
+        label: "頒布物",
+        detail: "有効な頒布物があります",
+        state: "complete",
+        count: 1,
+      }),
+      expect.objectContaining({
+        id: "bundles",
+        label: "セット",
+        detail: "登録済み",
+        state: "complete",
+        count: 1,
+      }),
+      expect.objectContaining({
+        id: "inventory",
+        label: "在庫",
+        detail: "選択中イベントの在庫があります",
+        state: "complete",
+        count: 1,
+      }),
     ]);
+    expect(status.rows).toHaveLength(4);
+    expect(status.rows.map((row) => row.id)).not.toContain("checkout");
   });
 
   it("does not require bundles for checkout readiness", () => {
@@ -66,7 +91,12 @@ describe("buildSetupStatus", () => {
 
     expect(status.checkoutReady).toBe(true);
     expect(status.rows.find((row) => row.id === "bundles")).toEqual(
-      expect.objectContaining({ state: "warning", required: false, count: 0 }),
+      expect.objectContaining({
+        detail: "セットは任意です",
+        state: "warning",
+        required: false,
+        count: 0,
+      }),
     );
   });
 
@@ -81,7 +111,11 @@ describe("buildSetupStatus", () => {
 
     expect(status.checkoutReady).toBe(false);
     expect(status.rows.find((row) => row.id === "inventory")).toEqual(
-      expect.objectContaining({ state: "missing", count: 0 }),
+      expect.objectContaining({
+        detail: "在庫を登録してください",
+        state: "missing",
+        count: 0,
+      }),
     );
   });
 });

@@ -11,7 +11,7 @@ describe("SectionTabs", () => {
         value="products"
         onChange={onChange}
         items={[
-          { value: "products", label: "商品" },
+          { value: "products", label: "頒布物" },
           { value: "events", label: "イベント" },
         ]}
       />,

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildProductMovementRows,
+  calculateBundleAvailability,
   calculateRemainingStock,
   validateCheckoutStock,
 } from "./inventory";
-import { makeInventory, makeSale } from "../test/fixtures";
+import { makeBundleItem, makeInventory, makeSale } from "../test/fixtures";
 
 describe("inventory domain", () => {
   it("calculates remaining stock from inventory, reservations, and non-canceled sales", () => {
@@ -18,7 +19,7 @@ describe("inventory domain", () => {
             lineId: "line-1",
             kind: "product",
             refId: "book",
-            displayName: "新刊",
+            displayName: "Book",
             productGenre: "book",
             unitPrice: 1000,
             quantity: 3,
@@ -34,7 +35,7 @@ describe("inventory domain", () => {
             lineId: "line-2",
             kind: "product",
             refId: "book",
-            displayName: "新刊",
+            displayName: "Book",
             productGenre: "book",
             unitPrice: 1000,
             quantity: 99,
@@ -55,7 +56,7 @@ describe("inventory domain", () => {
           lineId: "line-1",
           kind: "bundle",
           refId: "set-1",
-          displayName: "新刊セット",
+          displayName: "Starter Set",
           productGenre: "other",
           unitPrice: 1500,
           quantity: 2,
@@ -63,13 +64,13 @@ describe("inventory domain", () => {
           components: [
             {
               productId: "book",
-              productName: "新刊",
+              productName: "Book",
               productGenre: "book",
               quantity: 1,
             },
             {
               productId: "badge",
-              productName: "缶バッジ",
+              productName: "Badge",
               productGenre: "goods",
               quantity: 2,
             },
@@ -85,9 +86,9 @@ describe("inventory domain", () => {
         lineId: "line-1",
         sourceKind: "bundle",
         sourceRefId: "set-1",
-        sourceDisplayName: "新刊セット",
+        sourceDisplayName: "Starter Set",
         productId: "book",
-        productName: "新刊",
+        productName: "Book",
         productGenre: "book",
         unitQuantity: 1,
         lineQuantity: 2,
@@ -100,9 +101,9 @@ describe("inventory domain", () => {
         lineId: "line-1",
         sourceKind: "bundle",
         sourceRefId: "set-1",
-        sourceDisplayName: "新刊セット",
+        sourceDisplayName: "Starter Set",
         productId: "badge",
-        productName: "缶バッジ",
+        productName: "Badge",
         productGenre: "goods",
         unitQuantity: 2,
         lineQuantity: 2,
@@ -127,7 +128,7 @@ describe("inventory domain", () => {
           lineId: "line-1",
           kind: "product",
           refId: "book",
-          displayName: "新刊",
+          displayName: "Book",
           productGenre: "book",
           unitPrice: 1000,
           quantity: 3,
@@ -137,7 +138,7 @@ describe("inventory domain", () => {
           lineId: "line-2",
           kind: "reservation",
           refId: "book",
-          displayName: "取り置き 新刊",
+          displayName: "Reserved Book",
           productGenre: "book",
           unitPrice: 1000,
           quantity: 2,
@@ -149,9 +150,70 @@ describe("inventory domain", () => {
     expect(result).toEqual({
       ok: false,
       errors: [
-        "在庫が不足しています: 新刊 は残り 2 / 必要 3",
-        "取り置き在庫が不足しています: 取り置き 新刊 は残り 1 / 必要 2",
+        "在庫が不足しています: Book は残り 2 / 必要 3",
+        "取り置き在庫が不足しています: Reserved Book は残り 1 / 必要 2",
       ],
+    });
+  });
+
+  it("calculates bundle availability from component remaining stock", () => {
+    const availability = calculateBundleAvailability({
+      bundleId: "bundle-1",
+      bundleItems: [
+        makeBundleItem({
+          bundleId: "bundle-1",
+          productId: "book-a",
+          quantity: 2,
+        }),
+        makeBundleItem({
+          bundleId: "bundle-1",
+          productId: "goods-a",
+          quantity: 1,
+        }),
+      ],
+      inventories: [
+        makeInventory({
+          productId: "book-a",
+          initialStock: 5,
+          reservedStock: 1,
+        }),
+        makeInventory({
+          productId: "goods-a",
+          initialStock: 3,
+        }),
+      ],
+      sales: [],
+    });
+
+    expect(availability).toEqual({
+      availableQuantity: 2,
+      blockingProductIds: [],
+    });
+  });
+
+  it("reports components with no bundle availability as blocking product IDs", () => {
+    const availability = calculateBundleAvailability({
+      bundleId: "bundle-1",
+      bundleItems: [
+        makeBundleItem({
+          bundleId: "bundle-1",
+          productId: "book-a",
+          quantity: 1,
+        }),
+      ],
+      inventories: [
+        makeInventory({
+          productId: "book-a",
+          initialStock: 1,
+          reservedStock: 1,
+        }),
+      ],
+      sales: [],
+    });
+
+    expect(availability).toEqual({
+      availableQuantity: 0,
+      blockingProductIds: ["book-a"],
     });
   });
 });

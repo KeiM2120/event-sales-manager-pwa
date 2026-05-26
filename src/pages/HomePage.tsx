@@ -1,5 +1,14 @@
 import type { AppScreen } from "../components/AppShell";
+import {
+  HeroEventCard,
+  InlineActionButton,
+  PrimaryActionBar,
+  ScreenTitle,
+  StatusChip,
+  SurfaceCard,
+} from "../components/DesignSystem";
 import { buildSetupStatus } from "../domain/setupStatus";
+import type { SetupStatusRowId, SetupStatusState } from "../domain/setupStatus";
 import type { Bundle, Event, EventInventory, Product } from "../domain/types";
 import type { ManagementSection } from "./ManagementPage";
 
@@ -17,25 +26,18 @@ interface HomePageProps {
   onNavigate: (screen: AppScreen, options?: HomeNavigateOptions) => void;
 }
 
-const quickActions: Array<{ label: string; screen: AppScreen; body: string }> = [
-  { label: "会計へ", screen: "checkout", body: "頒布中の会計をすぐ始める" },
-  { label: "統計へ", screen: "stats", body: "売上と頒布数を確認する" },
-  { label: "管理へ", screen: "management", body: "商品・在庫・イベントを編集する" },
-];
-
-const statusStyles = {
-  complete: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-  warning: "bg-amber-50 text-amber-700 ring-amber-200",
-  missing: "bg-rose-50 text-rose-700 ring-rose-200",
-} as const;
-
 const setupManagementSections = {
   events: "events",
   products: "products",
   bundles: "bundles",
   inventory: "inventory",
-  checkout: "inventory",
-} as const satisfies Record<string, ManagementSection>;
+} as const satisfies Record<SetupStatusRowId, ManagementSection>;
+
+const statusTones = {
+  complete: "ok",
+  warning: "warn",
+  missing: "error",
+} as const satisfies Record<SetupStatusState, "ok" | "warn" | "error">;
 
 export function HomePage({
   events = [],
@@ -53,29 +55,38 @@ export function HomePage({
     inventories,
     selectedEventId,
   });
+  const selectedEvent = setupStatus.selectedEvent;
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">ホーム</h1>
+    <div className="space-y-4 pb-24">
+      <ScreenTitle>ホーム</ScreenTitle>
 
-      <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold">選択中イベント</h2>
-          {setupStatus.selectedEvent ? (
-            <p className="mt-1 text-sm text-slate-600">
-              {setupStatus.selectedEvent.name} / {setupStatus.selectedEvent.eventDate}
-            </p>
-          ) : (
-            <p className="mt-1 text-sm text-slate-600">イベントを登録してください。</p>
-          )}
+      <SurfaceCard ariaLabel="選択中イベント" className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-bold text-[color:var(--color-text)]">選択中イベント</h2>
+          {selectedEvent?.isClosed ? <StatusChip tone="muted">閉会済み</StatusChip> : null}
         </div>
 
+        {selectedEvent ? (
+          <HeroEventCard eventName={selectedEvent.name} circleSpace={selectedEvent.circleSpace}>
+            <div className="flex flex-wrap gap-2">
+              <StatusChip tone="sub">{selectedEvent.eventDate}</StatusChip>
+              {selectedEvent.isClosed ? <StatusChip tone="muted">閉会済み</StatusChip> : null}
+            </div>
+          </HeroEventCard>
+        ) : (
+          <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-medium text-[color:var(--color-muted)]">
+            イベントを登録してください。
+          </div>
+        )}
+
         {events.length > 0 ? (
-          <label className="block text-sm font-bold text-slate-700">
+          <label className="block text-sm font-bold text-[color:var(--color-text)]">
             イベントを選択
             <select
-              className="mt-2 min-h-12 w-full rounded-md border border-slate-300 bg-white px-3 text-base"
-              value={setupStatus.selectedEvent?.id ?? ""}
+              aria-label="イベントを選択"
+              className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
+              value={selectedEvent?.id ?? ""}
               onChange={(event) => onEventChange(event.target.value)}
             >
               {events.map((event) => (
@@ -86,10 +97,10 @@ export function HomePage({
             </select>
           </label>
         ) : null}
-      </section>
+      </SurfaceCard>
 
-      <section className="space-y-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-bold">セットアップ状態</h2>
+      <SurfaceCard ariaLabel="セットアップ状況" className="space-y-3">
+        <h2 className="text-base font-bold text-[color:var(--color-text)]">セットアップ状況</h2>
         <div className="grid gap-2">
           {setupStatus.rows.map((row) => (
             <button
@@ -101,45 +112,42 @@ export function HomePage({
                   managementSection: setupManagementSections[row.id],
                 })
               }
-              className="min-h-16 rounded-md border border-slate-200 p-3 text-left"
+              className="min-h-16 rounded-lg border border-slate-200 bg-white p-3 text-left active:bg-slate-50"
             >
               <span className="flex items-start justify-between gap-3">
-                <span>
-                  <span className="block font-bold">{row.label}</span>
-                  <span className="mt-1 block text-sm text-slate-600">{row.detail}</span>
+                <span className="min-w-0">
+                  <span className="block text-base font-bold text-[color:var(--color-text)]">
+                    {row.label}
+                  </span>
+                  <span className="mt-1 block text-sm font-medium text-[color:var(--color-muted)]">
+                    {row.detail}
+                  </span>
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
                   {row.count !== undefined ? (
-                    <span className="text-sm font-bold text-slate-700">{row.count}件</span>
+                    <span className="text-sm font-bold text-[color:var(--color-text)]">
+                      {row.count}件
+                    </span>
                   ) : null}
-                  <span
-                    className={`rounded px-2 py-1 text-xs font-bold ring-1 ${
-                      statusStyles[row.state]
-                    }`}
-                  >
+                  <StatusChip tone={statusTones[row.state]}>
                     {row.required ? "必須" : "任意"}
-                  </span>
+                  </StatusChip>
                 </span>
               </span>
             </button>
           ))}
         </div>
-      </section>
+      </SurfaceCard>
 
-      <div className="grid gap-3">
-        {quickActions.map((action) => (
-          <button
-            key={action.screen}
-            type="button"
-            aria-label={action.label}
-            onClick={() => onNavigate(action.screen)}
-            className="min-h-20 rounded-md bg-white p-4 text-left shadow-sm ring-1 ring-slate-200"
-          >
-            <span className="block text-lg font-bold">{action.label}</span>
-            <span className="mt-1 block text-sm text-slate-600">{action.body}</span>
-          </button>
-        ))}
-      </div>
+      <PrimaryActionBar>
+        <InlineActionButton
+          tone="main"
+          onClick={() => onNavigate("checkout")}
+          disabled={!setupStatus.checkoutReady}
+        >
+          会計へ進む
+        </InlineActionButton>
+      </PrimaryActionBar>
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { buildProductMovementRows } from "./inventory";
-import type { Expense, ProductGenre, Sale } from "./types";
+import type {
+  Expense,
+  ExpenseCategory,
+  ProductGenre,
+  Sale,
+  SaleLineKind,
+} from "./types";
 
 export interface EventStatsInput {
   eventId: string;
@@ -10,6 +16,7 @@ export interface EventStatsInput {
 export interface EventStatsSummary {
   totalSales: number;
   totalQuantity: number;
+  customerCount: number;
   averageUnitPrice: number;
   totalExpenses: number;
   profit: number;
@@ -21,15 +28,25 @@ export interface GenreQuantity {
 }
 
 export interface ProductRankingRow {
-  productId: string;
+  itemKey: string;
   displayName: string;
+  kind: SaleLineKind;
   quantity: number;
 }
 
 export interface SalesHistoryRow {
   saleId: string;
   datetime: string;
+  lineSummary: string;
   totalAmount: number;
+  quantity: number;
+  canceled: boolean;
+}
+
+export interface ExpenseBreakdownRow {
+  category: ExpenseCategory;
+  count: number;
+  amount: number;
 }
 
 export interface EventStats {
@@ -37,12 +54,12 @@ export interface EventStats {
   genreQuantities: GenreQuantity[];
   productRanking: ProductRankingRow[];
   salesHistory: SalesHistoryRow[];
+  expenseBreakdown: ExpenseBreakdownRow[];
 }
 
 export function calculateEventStats(input: EventStatsInput): EventStats {
-  const activeSales = input.sales.filter(
-    (sale) => sale.eventId === input.eventId && !sale.canceled,
-  );
+  const eventSales = input.sales.filter((sale) => sale.eventId === input.eventId);
+  const activeSales = eventSales.filter((sale) => !sale.canceled);
   const expenses = input.expenses.filter(
     (expense) => expense.eventId === input.eventId,
   );
@@ -68,6 +85,7 @@ export function calculateEventStats(input: EventStatsInput): EventStats {
     summary: {
       totalSales,
       totalQuantity,
+      customerCount: activeSales.length,
       averageUnitPrice:
         totalQuantity === 0 ? 0 : Math.round(totalSales / totalQuantity),
       totalExpenses,
@@ -79,15 +97,21 @@ export function calculateEventStats(input: EventStatsInput): EventStats {
       ),
     ),
     productRanking: sortByQuantityDesc(
-      Array.from(sumByProduct(movementRows).values()),
-    ),
-    salesHistory: activeSales
+      Array.from(sumBySaleLine(activeSales).values()),
+    ).slice(0, 5),
+    salesHistory: eventSales
       .map((sale) => ({
         saleId: sale.id,
         datetime: sale.datetime,
+        lineSummary: summarizeSaleLines(sale),
         totalAmount: sale.totalAmount,
+        quantity: sumSaleLineQuantity(sale),
+        canceled: sale.canceled,
       }))
-      .sort((a, b) => a.datetime.localeCompare(b.datetime)),
+      .sort((a, b) => b.datetime.localeCompare(a.datetime)),
+    expenseBreakdown: sortByAmountDesc(
+      Array.from(sumByExpenseCategory(expenses).values()),
+    ),
   };
 }
 
@@ -106,23 +130,56 @@ function sumByGenre(
   return quantities;
 }
 
-function sumByProduct(
-  movementRows: ReturnType<typeof buildProductMovementRows>,
-): Map<string, ProductRankingRow> {
+function sumBySaleLine(sales: Sale[]): Map<string, ProductRankingRow> {
   const rows = new Map<string, ProductRankingRow>();
 
-  for (const row of movementRows) {
-    const current = rows.get(row.productId);
-    rows.set(row.productId, {
-      productId: row.productId,
-      displayName: current?.displayName ?? row.productName,
-      quantity: (current?.quantity ?? 0) + row.totalProductQuantity,
+  for (const sale of sales) {
+    for (const line of sale.lines) {
+      const itemKey = `${line.kind}:${line.refId}`;
+      const current = rows.get(itemKey);
+      rows.set(itemKey, {
+        itemKey,
+        displayName: current?.displayName ?? line.displayName,
+        kind: line.kind,
+        quantity: (current?.quantity ?? 0) + line.quantity,
+      });
+    }
+  }
+
+  return rows;
+}
+
+function sumByExpenseCategory(
+  expenses: Expense[],
+): Map<ExpenseCategory, ExpenseBreakdownRow> {
+  const rows = new Map<ExpenseCategory, ExpenseBreakdownRow>();
+
+  for (const expense of expenses) {
+    const current = rows.get(expense.category);
+    rows.set(expense.category, {
+      category: expense.category,
+      count: (current?.count ?? 0) + 1,
+      amount: (current?.amount ?? 0) + expense.amount,
     });
   }
 
   return rows;
 }
 
+function sumSaleLineQuantity(sale: Sale): number {
+  return sale.lines.reduce((total, line) => total + line.quantity, 0);
+}
+
+function summarizeSaleLines(sale: Sale): string {
+  return sale.lines
+    .map((line) => `${line.displayName} ${line.quantity.toLocaleString("ja-JP")}点`)
+    .join(" / ");
+}
+
 function sortByQuantityDesc<T extends { quantity: number }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => b.quantity - a.quantity);
+}
+
+function sortByAmountDesc<T extends { amount: number }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => b.amount - a.amount);
 }

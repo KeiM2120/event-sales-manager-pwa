@@ -79,4 +79,42 @@ describe("checkoutReducer", () => {
       ],
     });
   });
+
+  it("does not add a line when maxQuantity is zero or lower", () => {
+    const state = checkoutReducer(createInitialCheckoutState("event-1"), {
+      type: "addLine",
+      item: {
+        kind: "product",
+        refId: "sold-out-book",
+        displayName: "完売本",
+        productGenre: "book",
+        unitPrice: 1000,
+        maxQuantity: 0,
+      },
+    });
+
+    expect(state.lines).toEqual([]);
+    expect(state.totalQuantity).toBe(0);
+    expect(state.totalAmount).toBe(0);
+  });
+
+  it("does not increment an existing line past maxQuantity", () => {
+    const item = {
+      kind: "reservation" as const,
+      refId: "reserved-book",
+      displayName: "取り置き 新刊",
+      productGenre: "book" as const,
+      unitPrice: 1000,
+      maxQuantity: 2,
+    };
+    const initial = createInitialCheckoutState("event-1");
+    const once = checkoutReducer(initial, { type: "addLine", item });
+    const twice = checkoutReducer(once, { type: "addLine", item });
+    const capped = checkoutReducer(twice, { type: "addLine", item });
+
+    expect(capped.lines).toHaveLength(1);
+    expect(capped.lines[0]?.quantity).toBe(2);
+    expect(capped.totalQuantity).toBe(2);
+    expect(capped.totalAmount).toBe(2000);
+  });
 });

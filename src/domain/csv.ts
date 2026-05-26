@@ -1,7 +1,18 @@
 import { buildProductMovementRows } from "./inventory";
-import type { Expense, Sale } from "./types";
+import type { Expense, ExpenseCategory, Sale } from "./types";
 
 type CsvCell = string | number | boolean | undefined;
+
+export interface ProfitLossCsvInput {
+  totalSales: number;
+  totalExpenses: number;
+  profit: number;
+  expenseBreakdown: Array<{
+    category: ExpenseCategory;
+    count: number;
+    amount: number;
+  }>;
+}
 
 export function escapeCsvCell(value: CsvCell): string {
   const text = value === undefined ? "" : String(value);
@@ -128,6 +139,20 @@ export function buildExpensesCsv(expenses: Expense[]): string {
       expense.payee,
       expense.amount,
       expense.memo,
+    ]),
+  ]);
+}
+
+export function buildProfitLossCsv(input: ProfitLossCsvInput): string {
+  return buildCsv([
+    ["売上", "経費", "利益"],
+    [input.totalSales, input.totalExpenses, input.profit],
+    [],
+    ["経費カテゴリ", "件数", "金額"],
+    ...input.expenseBreakdown.map((row) => [
+      row.category,
+      row.count,
+      row.amount,
     ]),
   ]);
 }

@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventSalesDatabase } from "../db/database";
@@ -18,10 +18,10 @@ describe("CheckoutPage", () => {
     database.close();
   });
 
-  it("shows product items in one column with row and plus minus controls", async () => {
+  it("shows compact 頒布物 cards and plus minus controls", async () => {
     render(<CheckoutPage eventId="event-1" />);
 
-    const productList = screen.getByRole("list", { name: "商品一覧" });
+    const productList = screen.getByRole("list", { name: "頒布物一覧" });
     expect(productList).toHaveClass("grid-cols-1");
 
     await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
@@ -34,57 +34,83 @@ describe("CheckoutPage", () => {
     expect(screen.queryByText("新刊 x1")).not.toBeInTheDocument();
   });
 
-  it("includes existing books, goods, and their reservation test items", async () => {
-    render(<CheckoutPage eventId="event-1" />);
+  it("renders event hero, Japanese labels, card tones, and accessible full names", async () => {
+    await seedCheckoutDatabase(database);
+    render(<CheckoutPage database={database} eventId="event-1" />);
 
-    const itemNames = ["既刊A", "既刊B", "グッズA", "グッズB"];
-    for (const itemName of itemNames) {
-      expect(
-        screen.getByRole("button", { name: `${itemName}を追加` }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: `取り置き ${itemName}を追加` }),
-      ).toBeInTheDocument();
-    }
+    expect(await screen.findByText("コミティア150")).toBeInTheDocument();
+    expect(screen.getByText("東A-01a")).toBeInTheDocument();
+    expect(screen.queryByText("会計中イベント")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "既刊Aを追加" }));
-    await userEvent.click(
-      screen.getByRole("button", { name: "取り置き グッズBを増やす" }),
-    );
+    const normalCard = screen.getByRole("listitem", { name: "新刊" });
+    expect(normalCard).toHaveClass("border-l-[6px]");
+    expect(normalCard).toHaveClass("border-l-[color:var(--color-sub)]");
+    expect(within(normalCard).getByText("残1")).toBeInTheDocument();
 
-    expect(screen.getByText("既刊A x1")).toBeInTheDocument();
-    expect(screen.getByText("取り置き グッズB x1")).toBeInTheDocument();
+    const reservationCard = screen.getByRole("listitem", { name: "取り置き 新刊" });
+    expect(reservationCard).toHaveClass("bg-[color:var(--color-sub)]/20");
+    expect(within(reservationCard).getByText("予約")).toBeInTheDocument();
+    expect(within(reservationCard).getByText("残1")).toBeInTheDocument();
+
+    const bundleCard = screen.getByRole("listitem", { name: "新刊セット" });
+    expect(bundleCard).toHaveClass("border-l-[color:var(--color-accent)]");
+    expect(within(bundleCard).getByText("残1")).toBeInTheDocument();
+
+    expect(
+      screen.getByLabelText("とても長い頒布物名サンプル完全版の全文"),
+    ).toHaveTextContent("とても長い頒布物名サンプル完全版");
   });
 
-  it("keeps clear undo and confirm actions fixed at the bottom", () => {
-    render(<CheckoutPage eventId="event-1" />);
+  it("keeps sold out rows subdued and lower unless already selected", async () => {
+    await seedCheckoutDatabase(database);
+    render(<CheckoutPage database={database} eventId="event-1" />);
 
-    const checkoutActions = screen.getByRole("group", { name: "会計操作" });
-    expect(checkoutActions).toHaveClass("fixed");
-    expect(checkoutActions).toHaveClass("bottom-0");
-    expect(checkoutActions).toHaveTextContent("クリア");
-    expect(checkoutActions).toHaveTextContent("Undo");
-    expect(checkoutActions).toHaveTextContent("確定 0円");
+    await screen.findByRole("listitem", { name: "新刊" });
+    const cards = screen.getAllByRole("listitem");
+    const soldOutCard = screen.getByRole("listitem", { name: "完売本" });
+
+    expect(within(soldOutCard).getByText("売切")).toBeInTheDocument();
+    expect(soldOutCard).toHaveClass("bg-slate-100");
+    expect(cards.at(-1)).toBe(soldOutCard);
   });
 
-  it("pins checkout details above the bottom actions with an internal scroll area", async () => {
+  it("caps product, reservation, and bundle additions at derived max quantities", async () => {
+    await seedCheckoutDatabase(database);
+    render(<CheckoutPage database={database} eventId="event-1" />);
+
+    await screen.findByRole("button", { name: "新刊を追加" });
+    await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
+    await userEvent.click(screen.getByRole("button", { name: "新刊を増やす" }));
+    await userEvent.click(screen.getByRole("button", { name: "取り置き 新刊を追加" }));
+    await userEvent.click(screen.getByRole("button", { name: "取り置き 新刊を増やす" }));
+    await userEvent.click(screen.getByRole("button", { name: "新刊セットを追加" }));
+    await userEvent.click(screen.getByRole("button", { name: "新刊セットを増やす" }));
+
+    expect(screen.getByText("新刊 x1")).toBeInTheDocument();
+    expect(screen.getByText("取り置き 新刊 x1")).toBeInTheDocument();
+    expect(screen.getByText("新刊セット x1")).toBeInTheDocument();
+    expect(screen.getByText("合計 3点")).toBeInTheDocument();
+  });
+
+  it("keeps selected details above total and confirm in the fixed bottom area", async () => {
     render(<CheckoutPage eventId="event-1" />);
 
     await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
-    const checkoutDetails = screen.getByRole("region", { name: "会計内容" });
-    const checkoutDetailLines = screen.getByRole("list", { name: "会計明細" });
+    const checkoutActions = screen.getByRole("group", { name: "会計操作" });
+    const selectedLines = screen.getByRole("list", { name: "選択中の明細" });
 
-    expect(checkoutDetails).toHaveClass("fixed");
-    expect(checkoutDetails).toHaveClass("bottom-20");
-    expect(checkoutDetails).toHaveClass("h-[30vh]");
-    expect(checkoutDetailLines).toHaveClass("overflow-y-auto");
-    expect(checkoutDetailLines).toHaveClass("mt-1");
-    expect(checkoutDetailLines).toHaveClass("space-y-1");
-    expect(checkoutDetailLines).toHaveTextContent("新刊 x1");
-    expect(screen.getByText("新刊 x1").closest("li")).toHaveClass("py-1");
+    expect(checkoutActions).toHaveClass("fixed");
+    expect(checkoutActions).toHaveClass("bottom-0");
+    expect(screen.getByText("選択中").closest("ul")).toBeNull();
+    expect(selectedLines).toHaveClass("max-h-32");
+    expect(selectedLines).toHaveClass("overflow-y-auto");
+    expect(within(selectedLines).getByText("1,000円")).toBeInTheDocument();
+    expect(checkoutActions.textContent).toMatch(/選択中[\s\S]*新刊 x1[\s\S]*合計 1点[\s\S]*会計を確定/);
+    expect(checkoutActions).toHaveTextContent("クリア");
+    expect(checkoutActions).toHaveTextContent("取消");
   });
 
-  it("scrolls checkout details to the bottom when an item is added", async () => {
+  it("scrolls selected details to the bottom when an item is added", async () => {
     const scrollTo = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollTo", {
       configurable: true,
@@ -100,19 +126,24 @@ describe("CheckoutPage", () => {
     });
   });
 
-  it("confirms checkout to sales and clears current lines", async () => {
+  it("disables confirm until a line is selected, then saves and clears current lines", async () => {
     await seedCheckoutDatabase(database);
     render(<CheckoutPage database={database} eventId="event-1" />);
 
+    const disabledConfirm = screen.getByRole("button", { name: "会計を確定 0円" });
+    expect(disabledConfirm).toBeDisabled();
+
     await screen.findByRole("button", { name: "新刊を追加" });
     await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
-    await userEvent.click(screen.getByRole("button", { name: "確定 1000円" }));
+    const confirmButton = screen.getByRole("button", { name: "会計を確定 1,000円" });
+    expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
 
     await waitFor(async () => {
-      await expect(database.sales.count()).resolves.toBe(1);
+      await expect(database.sales.count()).resolves.toBe(2);
     });
     expect(screen.queryByText("新刊 x1")).not.toBeInTheDocument();
-    expect(screen.getByText("保存しました。")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("会計を保存しました");
   });
 
   it("does not save duplicate sales while confirmation is already running", async () => {
@@ -121,11 +152,11 @@ describe("CheckoutPage", () => {
 
     await screen.findByRole("button", { name: "新刊を追加" });
     await userEvent.click(screen.getByRole("button", { name: "新刊を追加" }));
-    const confirmButton = screen.getByRole("button", { name: "確定 1000円" });
-    await Promise.all([userEvent.click(confirmButton), userEvent.click(confirmButton)]);
+    const confirmButton = screen.getByRole("button", { name: "会計を確定 1,000円" });
+    await userEvent.dblClick(confirmButton);
 
     await waitFor(async () => {
-      await expect(database.sales.count()).resolves.toBe(1);
+      await expect(database.sales.count()).resolves.toBe(2);
     });
   });
 
@@ -151,7 +182,7 @@ describe("CheckoutPage", () => {
     ]);
     render(<CheckoutPage database={database} eventId="event-1" />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
 
     await waitFor(async () => {
       await expect(database.sales.get("sale-latest")).resolves.toMatchObject({
@@ -161,7 +192,7 @@ describe("CheckoutPage", () => {
     await expect(database.sales.get("sale-old")).resolves.toMatchObject({
       canceled: false,
     });
-    expect(screen.getByText("直近の売上を取り消しました。")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("直近の売上を取り消しました");
   });
 });
 
@@ -171,18 +202,109 @@ async function seedCheckoutDatabase(database: EventSalesDatabase) {
     name: "コミティア150",
     eventDate: "2026-11-23",
     series: "other",
+    circleSpace: "東A-01a",
   });
-  await database.products.put({
-    id: "book",
-    name: "新刊",
-    productGenre: "book",
-    defaultPrice: 1000,
+  await database.products.bulkPut([
+    {
+      id: "book",
+      name: "新刊",
+      productGenre: "book",
+      defaultPrice: 1000,
+      isActive: true,
+    },
+    {
+      id: "goods",
+      name: "グッズ",
+      productGenre: "goods",
+      defaultPrice: 500,
+      isActive: true,
+    },
+    {
+      id: "long-name",
+      name: "とても長い頒布物名サンプル完全版",
+      productGenre: "book",
+      defaultPrice: 1200,
+      isActive: true,
+    },
+    {
+      id: "sold-out",
+      name: "完売本",
+      productGenre: "book",
+      defaultPrice: 900,
+      isActive: true,
+    },
+  ]);
+  await database.eventInventories.bulkPut([
+    {
+      eventId: "event-1",
+      productId: "book",
+      initialStock: 3,
+      reservedStock: 1,
+    },
+    {
+      eventId: "event-1",
+      productId: "goods",
+      initialStock: 4,
+      reservedStock: 0,
+    },
+    {
+      eventId: "event-1",
+      productId: "long-name",
+      initialStock: 5,
+      reservedStock: 0,
+    },
+    {
+      eventId: "event-1",
+      productId: "sold-out",
+      initialStock: 1,
+      reservedStock: 0,
+    },
+  ]);
+  await database.bundles.put({
+    id: "bundle-1",
+    name: "新刊セット",
+    price: 1400,
     isActive: true,
   });
-  await database.eventInventories.put({
+  await database.bundleItems.bulkPut([
+    {
+      bundleId: "bundle-1",
+      productId: "book",
+      quantity: 1,
+    },
+    {
+      bundleId: "bundle-1",
+      productId: "goods",
+      quantity: 2,
+    },
+  ]);
+  await database.sales.put({
+    id: "sale-existing",
     eventId: "event-1",
-    productId: "book",
-    initialStock: 10,
-    reservedStock: 0,
+    datetime: "2026-08-16T08:00:00+09:00",
+    totalAmount: 1900,
+    canceled: false,
+    lines: [
+      {
+        lineId: "product:book",
+        kind: "product",
+        refId: "book",
+        displayName: "新刊",
+        productGenre: "book",
+        unitPrice: 1000,
+        quantity: 1,
+        subtotal: 1000,
+      },
+      {
+        lineId: "product:sold-out",
+        kind: "product",
+        refId: "sold-out",
+        displayName: "完売本",
+        productGenre: "book",
+        unitPrice: 900,
+        quantity: 1,
+        subtotal: 900,
+      },
+    ],
   });
 }

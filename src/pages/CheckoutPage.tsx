@@ -1,16 +1,25 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { HeroEventCard, StatusChip } from "../components/DesignSystem";
 import type { EventSalesDatabase } from "../db/database";
-import { calculateRemainingStock } from "../domain/inventory";
+import {
+  calculateBundleAvailability,
+  calculateRemainingStock,
+} from "../domain/inventory";
 import type {
   Bundle,
   BundleItem,
+  CheckoutState,
   Event,
   EventInventory,
   Product,
   Sale,
 } from "../domain/types";
-import { checkoutReducer, createInitialCheckoutState } from "../reducers/checkoutReducer";
+import {
+  checkoutReducer,
+  createInitialCheckoutState,
+  type CheckoutItemInput,
+} from "../reducers/checkoutReducer";
 import { confirmCheckout, undoSale } from "../services/checkoutService";
 
 const demoProducts = [
@@ -46,32 +55,24 @@ const demoProducts = [
   },
 ];
 
-interface CheckoutDisplayItem {
+interface CheckoutDisplayItem extends CheckoutItemInput {
   kind: "product" | "bundle" | "reservation";
-  refId: string;
-  displayName: string;
-  productGenre: Product["productGenre"];
-  unitPrice: number;
   stockLabel: string;
-  components?: Array<{
-    productId: string;
-    productName: string;
-    productGenre: Product["productGenre"];
-    quantity: number;
-  }>;
 }
 
 const demoItems: CheckoutDisplayItem[] = demoProducts.flatMap((product) => [
   {
     ...product,
     kind: "product" as const,
-    stockLabel: "数量",
+    maxQuantity: 99,
+    stockLabel: "残99",
   },
   {
     ...product,
     kind: "reservation" as const,
     displayName: `取り置き ${product.displayName}`,
-    stockLabel: "数量",
+    maxQuantity: 99,
+    stockLabel: "残99",
   },
 ]);
 
@@ -105,12 +106,29 @@ export function CheckoutPage({ database, eventId }: CheckoutPageProps) {
     checkoutDetails.scrollTop = checkoutDetails.scrollHeight;
   }, [state.totalQuantity, state.lines.length]);
 
+  useEffect(() => {
+    if (!message) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => setMessage(null), 2400);
+    return () => window.clearTimeout(timerId);
+  }, [message]);
+
   const checkoutData = useCheckoutData(database, eventId);
   const items = checkoutData?.items ?? demoItems;
-  const eventLabel = checkoutData?.event ? formatEventLabel(checkoutData.event) : null;
+  const sortedItems = useMemo(
+    () => sortDisplayItems(items, state),
+    [items, state],
+  );
+  const eventName = checkoutData?.event?.name ?? "デモイベント";
+  const circleSpace = checkoutData?.event?.circleSpace;
+  const hasLines = state.lines.length > 0;
+  const totalLabel = `合計 ${state.totalQuantity}点`;
+  const amountLabel = formatYen(state.totalAmount);
 
   async function handleConfirm() {
-    if (!database || state.lines.length === 0 || isConfirmingRef.current) {
+    if (!database || !hasLines || isConfirmingRef.current) {
       return;
     }
 
@@ -122,9 +140,9 @@ export function CheckoutPage({ database, eventId }: CheckoutPageProps) {
         datetime: new Date().toISOString(),
       });
       dispatch({ type: "clear" });
-      setMessage("保存しました。");
+      setMessage("会計を保存しました");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "保存できませんでした。");
+      setMessage(error instanceof Error ? error.message : "保存できませんでした");
     } finally {
       isConfirmingRef.current = false;
       setIsConfirming(false);
@@ -145,122 +163,174 @@ export function CheckoutPage({ database, eventId }: CheckoutPageProps) {
       .then((sales) => sales.at(0));
 
     if (!latestSale) {
-      setMessage("取り消せる売上がありません。");
+      setMessage("取り消せる売上がありません");
       return;
     }
 
     await undoSale(database, latestSale.id);
-    setMessage("直近の売上を取り消しました。");
+    setMessage("直近の売上を取り消しました");
   }
 
   return (
-    <div className="space-y-4 pb-[calc(30vh+6rem)]">
-      <h1 className="text-2xl font-bold">会計</h1>
-      {eventLabel && <p className="text-sm font-bold text-slate-700">{eventLabel}</p>}
-      {message && (
-        <p className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">
-          {message}
-        </p>
-      )}
-      <ul aria-label="商品一覧" className="grid grid-cols-1 gap-3">
-        {items.map((item) => (
-          <li
-            key={`${item.kind}-${item.refId}`}
-            className="grid grid-cols-[1fr_auto_auto] items-stretch gap-2 rounded-md bg-white p-2 shadow-sm ring-1 ring-slate-200"
-          >
-            <button
-              type="button"
-              aria-label={`${item.displayName}を追加`}
-              onClick={() => dispatch({ type: "addLine", item })}
-              className="min-h-20 rounded-md px-2 text-left"
-            >
-              <span className="block text-lg font-bold">{item.displayName}</span>
-              <span className="mt-1 block text-sm text-slate-600">
-                {item.unitPrice}円 / {item.stockLabel} {getLineQuantity(state, item)}
-              </span>
-            </button>
-            <button
-              type="button"
-              aria-label={`${item.displayName}を減らす`}
-              disabled={getLineQuantity(state, item) === 0}
-              onClick={() =>
-                dispatch({ type: "decrementLine", lineId: createLineId(item) })
-              }
-              className="min-h-20 w-14 rounded-md border text-2xl font-bold disabled:text-slate-300"
-            >
-              -
-            </button>
-            <button
-              type="button"
-              aria-label={`${item.displayName}を増やす`}
-              onClick={() => dispatch({ type: "addLine", item })}
-              className="min-h-20 w-14 rounded-md bg-slate-900 text-2xl font-bold text-white"
-            >
-              +
-            </button>
-          </li>
-        ))}
-      </ul>
-      <section
-        aria-label="会計内容"
-        className="fixed inset-x-0 bottom-20 z-10 mx-auto flex h-[30vh] max-w-3xl flex-col border-t border-slate-200 bg-white p-3 shadow-lg"
-      >
-        <h2 className="font-bold">会計内容</h2>
-        <ul
-          ref={checkoutDetailsRef}
-          aria-label="会計明細"
-          className="mt-1 flex-1 space-y-1 overflow-y-auto"
+    <div className="space-y-3 px-3 pb-80 pt-3">
+      <HeroEventCard eventName={eventName} circleSpace={circleSpace} />
+
+      {message ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed left-1/2 top-1/2 z-30 w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-emerald-200 bg-white px-5 py-4 text-center text-base font-bold text-emerald-800 shadow-[var(--shadow-card)]"
         >
-          {state.lines.map((line) => (
+          {message}
+        </div>
+      ) : null}
+
+      <ul aria-label="頒布物一覧" className="grid grid-cols-1 gap-2">
+        {sortedItems.map((item) => {
+          const quantity = getLineQuantity(state, item);
+          const isSoldOut = getMaxQuantity(item) <= 0;
+          const canAddItem = canAdd(state, item);
+          const tone = getItemTone(item, isSoldOut);
+
+          return (
             <li
-              key={line.lineId}
-              className="flex items-center justify-between gap-3 py-1"
+              key={`${item.kind}-${item.refId}`}
+              aria-label={item.displayName}
+              className={[
+                "grid min-h-24 grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-lg border-l-[6px] p-3 shadow-[var(--shadow-card)] ring-1 ring-slate-200",
+                tone.cardClassName,
+              ].join(" ")}
             >
-              <span>
-                {line.displayName} x{line.quantity}
-              </span>
               <button
                 type="button"
-                aria-label={`会計内容の${line.displayName}を減らす`}
-                className="h-9 w-9 rounded-md border text-lg font-bold"
-                onClick={() =>
-                  dispatch({ type: "decrementLine", lineId: line.lineId })
-                }
+                aria-label={`${item.displayName}を追加`}
+                disabled={!canAddItem}
+                onClick={() => dispatch({ type: "addLine", item })}
+                className="min-w-0 text-left disabled:cursor-not-allowed"
               >
-                -
+                <span
+                  aria-label={`${item.displayName}の全文`}
+                  title={item.displayName}
+                  className="truncate-one-line block text-base font-bold leading-tight text-[color:var(--color-text)]"
+                >
+                  {item.displayName}
+                </span>
+                <span className="mt-3 flex min-w-0 items-center gap-2 text-sm font-bold text-[color:var(--color-muted)]">
+                  <span className="shrink-0">{formatYen(item.unitPrice)}</span>
+                  <span className="shrink-0">/</span>
+                  <span className="truncate-one-line">{item.stockLabel}</span>
+                  {quantity > 0 ? (
+                    <span className="shrink-0 text-[color:var(--color-main)]">
+                      選択{quantity}
+                    </span>
+                  ) : null}
+                </span>
               </button>
+
+              <div className="flex items-center gap-2">
+                {item.kind === "reservation" ? <StatusChip tone="sub">予約</StatusChip> : null}
+                {isSoldOut ? <StatusChip tone="muted">売切</StatusChip> : null}
+                <div className="flex shrink-0 overflow-hidden rounded-lg ring-1 ring-slate-200">
+                  <button
+                    type="button"
+                    aria-label={`${item.displayName}を減らす`}
+                    disabled={quantity === 0}
+                    onClick={() =>
+                      dispatch({ type: "decrementLine", lineId: createLineId(item) })
+                    }
+                    className="min-h-12 w-12 bg-white text-2xl font-bold text-[color:var(--color-main)] disabled:text-slate-300"
+                  >
+                    -
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`${item.displayName}を増やす`}
+                    disabled={!canAddItem}
+                    onClick={() => dispatch({ type: "addLine", item })}
+                    className="min-h-12 w-12 bg-[color:var(--color-main)] text-2xl font-bold text-white disabled:bg-slate-300"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </li>
-          ))}
-        </ul>
-      </section>
+          );
+        })}
+      </ul>
+
       <div
         role="group"
         aria-label="会計操作"
-        className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white/95 p-2 backdrop-blur"
+        className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-3 py-3 shadow-[0_-10px_28px_rgb(23_32_51_/_0.10)] backdrop-blur"
       >
-        <div className="mx-auto grid max-w-3xl grid-cols-3 gap-2">
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          <section aria-label="選択中">
+            <h2 className="text-sm font-bold text-[color:var(--color-text)]">選択中</h2>
+            <ul
+              ref={checkoutDetailsRef}
+              aria-label="選択中の明細"
+              className="mt-2 max-h-32 space-y-1 overflow-y-auto"
+            >
+              {state.lines.map((line) => (
+                <li
+                  key={line.lineId}
+                  className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-md bg-slate-50 px-3 py-2"
+                >
+                  <span className="truncate-one-line text-sm font-bold">
+                    {line.displayName} x{line.quantity}
+                  </span>
+                  <span className="shrink-0 text-sm font-bold text-[color:var(--color-muted)]">
+                    {formatYen(line.subtotal)}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`選択中の${line.displayName}を減らす`}
+                    className="h-9 w-9 rounded-md bg-white text-lg font-bold text-[color:var(--color-main)] ring-1 ring-slate-200"
+                    onClick={() =>
+                      dispatch({ type: "decrementLine", lineId: line.lineId })
+                    }
+                  >
+                    -
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <div className="flex items-end justify-between gap-3">
+            <span className="text-base font-bold text-[color:var(--color-text)]">
+              {totalLabel}
+            </span>
+            <span className="text-3xl font-bold text-[color:var(--color-text)]">
+              {amountLabel}
+            </span>
+          </div>
+
           <button
             type="button"
-            className="min-h-16 rounded-md border bg-white font-bold"
-            onClick={() => dispatch({ type: "clear" })}
-          >
-            クリア
-          </button>
-          <button
-            type="button"
-            className="min-h-16 rounded-md border bg-white font-bold"
-            onClick={handleUndo}
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            className="min-h-16 rounded-md bg-emerald-700 font-bold text-white"
-            disabled={isConfirming}
+            className="min-h-14 rounded-lg bg-[color:var(--color-main)] text-lg font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={!hasLines || isConfirming}
             onClick={handleConfirm}
           >
-            確定 {state.totalAmount}円
+            会計を確定 {amountLabel}
           </button>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className="min-h-10 rounded-lg bg-white text-sm font-bold text-[color:var(--color-muted)] ring-1 ring-slate-200"
+              onClick={() => dispatch({ type: "clear" })}
+            >
+              クリア
+            </button>
+            <button
+              type="button"
+              className="min-h-10 rounded-lg bg-white text-sm font-bold text-[color:var(--color-muted)] ring-1 ring-slate-200"
+              onClick={handleUndo}
+            >
+              取消
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -271,28 +341,20 @@ function useCheckoutData(database: EventSalesDatabase | undefined, eventId: stri
   const events =
     (useLiveQuery(async () => (database ? await database.events.toArray() : []), [
       database,
-    ]) as
-      | Event[]
-      | undefined) ?? [];
+    ]) as Event[] | undefined) ?? [];
   const products =
     (useLiveQuery(async () => (database ? await database.products.toArray() : []), [
       database,
-    ]) as
-      | Product[]
-      | undefined) ?? [];
+    ]) as Product[] | undefined) ?? [];
   const bundles =
     (useLiveQuery(async () => (database ? await database.bundles.toArray() : []), [
       database,
-    ]) as
-      | Bundle[]
-      | undefined) ?? [];
+    ]) as Bundle[] | undefined) ?? [];
   const bundleItems =
     (useLiveQuery(
       async () => (database ? await database.bundleItems.toArray() : []),
       [database],
-    ) as
-      | BundleItem[]
-      | undefined) ?? [];
+    ) as BundleItem[] | undefined) ?? [];
   const inventories =
     (useLiveQuery(
       async () => (database ? await database.eventInventories.toArray() : []),
@@ -301,9 +363,7 @@ function useCheckoutData(database: EventSalesDatabase | undefined, eventId: stri
   const sales =
     (useLiveQuery(async () => (database ? await database.sales.toArray() : []), [
       database,
-    ]) as
-      | Sale[]
-      | undefined) ?? [];
+    ]) as Sale[] | undefined) ?? [];
 
   if (!database) {
     return null;
@@ -314,6 +374,8 @@ function useCheckoutData(database: EventSalesDatabase | undefined, eventId: stri
   const eventInventories = inventories.filter(
     (inventory) => inventory.eventId === targetEventId,
   );
+  const eventSales = sales.filter((sale) => sale.eventId === targetEventId);
+
   const productItems = eventInventories.flatMap((inventory) => {
     const product = products.find((item) => item.id === inventory.productId);
     if (!product || !product.isActive) {
@@ -323,52 +385,69 @@ function useCheckoutData(database: EventSalesDatabase | undefined, eventId: stri
     const remainingStock = calculateRemainingStock(
       product.id,
       eventInventories,
-      sales.filter((sale) => sale.eventId === targetEventId),
+      eventSales,
     );
-    const stockLabel = `初期 ${inventory.initialStock} / 残り ${remainingStock} / 取置 ${inventory.reservedStock}`;
     const normalItem: CheckoutDisplayItem = {
       kind: "product",
       refId: product.id,
       displayName: product.name,
       productGenre: product.productGenre,
       unitPrice: product.defaultPrice,
-      stockLabel,
+      maxQuantity: remainingStock,
+      stockLabel: `残${remainingStock}`,
     };
     const reservationItem: CheckoutDisplayItem = {
-      ...normalItem,
       kind: "reservation",
+      refId: product.id,
       displayName: `取り置き ${product.name}`,
+      productGenre: product.productGenre,
+      unitPrice: product.defaultPrice,
+      maxQuantity: inventory.reservedStock,
+      stockLabel: `残${inventory.reservedStock}`,
     };
 
     return inventory.reservedStock > 0 ? [normalItem, reservationItem] : [normalItem];
   });
+
   const bundleDisplayItems = bundles
     .filter((bundle) => bundle.isActive)
-    .map((bundle): CheckoutDisplayItem => ({
-      kind: "bundle",
-      refId: bundle.id,
-      displayName: bundle.name,
-      productGenre: "other",
-      unitPrice: bundle.price,
-      stockLabel: "セット",
-      components: bundleItems
-        .filter((item) => item.bundleId === bundle.id)
-        .flatMap((item) => {
-          const product = products.find((candidate) => candidate.id === item.productId);
-          if (!product) {
-            return [];
-          }
+    .map((bundle): CheckoutDisplayItem => {
+      const availability = calculateBundleAvailability({
+        bundleId: bundle.id,
+        bundleItems,
+        inventories: eventInventories,
+        sales: eventSales,
+      });
 
-          return [
-            {
-              productId: product.id,
-              productName: product.name,
-              productGenre: product.productGenre,
-              quantity: item.quantity,
-            },
-          ];
-        }),
-    }));
+      return {
+        kind: "bundle",
+        refId: bundle.id,
+        displayName: bundle.name,
+        productGenre: "other",
+        unitPrice: bundle.price,
+        maxQuantity: availability.availableQuantity,
+        stockLabel: `残${availability.availableQuantity}`,
+        components: bundleItems
+          .filter((item) => item.bundleId === bundle.id)
+          .flatMap((item) => {
+            const product = products.find(
+              (candidate) => candidate.id === item.productId,
+            );
+            if (!product) {
+              return [];
+            }
+
+            return [
+              {
+                productId: product.id,
+                productName: product.name,
+                productGenre: product.productGenre,
+                quantity: item.quantity,
+              },
+            ];
+          }),
+      };
+    });
 
   return {
     event,
@@ -376,21 +455,73 @@ function useCheckoutData(database: EventSalesDatabase | undefined, eventId: stri
   };
 }
 
-function formatEventLabel(event: Event): string {
-  return [event.name, event.eventDate, event.circleSpace].filter(Boolean).join(" / ");
-}
-
 function createId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
-function createLineId(item: CheckoutDisplayItem): string {
+function createLineId(item: Pick<CheckoutDisplayItem, "kind" | "refId">): string {
   return `${item.kind}:${item.refId}`;
 }
 
-function getLineQuantity(
-  state: ReturnType<typeof createInitialCheckoutState>,
-  item: CheckoutDisplayItem,
-): number {
+function getLineQuantity(state: CheckoutState, item: CheckoutDisplayItem): number {
   return state.lines.find((line) => line.lineId === createLineId(item))?.quantity ?? 0;
+}
+
+function canAdd(state: CheckoutState, item: CheckoutDisplayItem): boolean {
+  return getLineQuantity(state, item) < (item.maxQuantity ?? Number.POSITIVE_INFINITY);
+}
+
+function sortDisplayItems(
+  items: CheckoutDisplayItem[],
+  state: CheckoutState,
+): CheckoutDisplayItem[] {
+  return [...items].sort((first, second) => {
+    const firstIsLower =
+      getMaxQuantity(first) <= 0 && getLineQuantity(state, first) === 0;
+    const secondIsLower =
+      getMaxQuantity(second) <= 0 && getLineQuantity(state, second) === 0;
+
+    if (firstIsLower === secondIsLower) {
+      return 0;
+    }
+
+    return firstIsLower ? 1 : -1;
+  });
+}
+
+function getItemTone(
+  item: CheckoutDisplayItem,
+  isSoldOut: boolean,
+): { cardClassName: string } {
+  if (isSoldOut) {
+    return {
+      cardClassName:
+        "border-l-slate-300 bg-slate-100 text-slate-500 opacity-80",
+    };
+  }
+
+  if (item.kind === "bundle") {
+    return {
+      cardClassName: "border-l-[color:var(--color-accent)] bg-white",
+    };
+  }
+
+  if (item.kind === "reservation") {
+    return {
+      cardClassName:
+        "border-l-[color:var(--color-sub)] bg-[color:var(--color-sub)]/20",
+    };
+  }
+
+  return {
+    cardClassName: "border-l-[color:var(--color-sub)] bg-white",
+  };
+}
+
+function getMaxQuantity(item: CheckoutDisplayItem): number {
+  return item.maxQuantity ?? Number.POSITIVE_INFINITY;
+}
+
+function formatYen(value: number): string {
+  return `${value.toLocaleString("ja-JP")}円`;
 }

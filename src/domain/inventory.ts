@@ -1,4 +1,5 @@
 import type {
+  BundleItem,
   EventInventory,
   ProductGenre,
   Sale,
@@ -32,6 +33,18 @@ export interface ValidateCheckoutStockInput {
   nextLines: SaleLine[];
 }
 
+export interface BundleAvailabilityInput {
+  bundleId: string;
+  bundleItems: BundleItem[];
+  inventories: EventInventory[];
+  sales: Sale[];
+}
+
+export interface BundleAvailability {
+  availableQuantity: number;
+  blockingProductIds: string[];
+}
+
 export function buildProductMovementRows(sales: Sale[]): ProductMovementRow[] {
   return sales.flatMap((sale) =>
     sale.lines.flatMap((line) => buildLineMovementRows(sale, line)),
@@ -51,6 +64,45 @@ export function calculateRemainingStock(
     .reduce((total, row) => total + row.totalProductQuantity, 0);
 
   return initialStock - reservedStock - soldCount;
+}
+
+export function calculateBundleAvailability({
+  bundleId,
+  bundleItems,
+  inventories,
+  sales,
+}: BundleAvailabilityInput): BundleAvailability {
+  const components = bundleItems.filter((item) => item.bundleId === bundleId);
+
+  if (components.length === 0) {
+    return { availableQuantity: 0, blockingProductIds: [] };
+  }
+
+  const componentAvailability = components.map((component) => {
+    const remainingStock = calculateRemainingStock(
+      component.productId,
+      inventories,
+      sales,
+    );
+    return {
+      productId: component.productId,
+      availableQuantity:
+        component.quantity <= 0
+          ? 0
+          : Math.floor(remainingStock / component.quantity),
+    };
+  });
+  const availableQuantity = Math.max(
+    0,
+    Math.min(...componentAvailability.map((item) => item.availableQuantity)),
+  );
+
+  return {
+    availableQuantity,
+    blockingProductIds: componentAvailability
+      .filter((item) => item.availableQuantity <= 0)
+      .map((item) => item.productId),
+  };
 }
 
 export function validateCheckoutStock({

@@ -8,12 +8,12 @@ interface ModalProps {
 
 export function Modal({ title, onClose, children }: ModalProps) {
   return (
-    <div className="fixed inset-0 z-20 bg-slate-950/50 p-4">
+    <div className="fixed inset-0 z-20 flex items-center bg-slate-950/50 p-4">
       <section
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="mx-auto max-w-md rounded-md bg-white p-4 shadow-xl"
+        className="mx-auto flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col rounded-md bg-white p-4 shadow-xl"
       >
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-bold">{title}</h2>
@@ -21,7 +21,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
             閉じる
           </button>
         </div>
-        <div className="mt-4">{children}</div>
+        <div className="mt-4 overflow-y-auto">{children}</div>
       </section>
     </div>
   );

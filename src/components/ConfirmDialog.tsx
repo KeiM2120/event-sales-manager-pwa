@@ -17,7 +17,7 @@ export function ConfirmDialog({
     <section
       role="alertdialog"
       aria-label={title}
-      className="rounded-md border border-slate-200 bg-white p-4 shadow-sm"
+      className="rounded-md border border-slate-200 bg-white p-4 shadow-[var(--shadow-card)]"
     >
       <h2 className="text-lg font-bold">{title}</h2>
       <p className="mt-2 text-sm text-slate-700">{message}</p>
