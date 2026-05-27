@@ -147,5 +147,5 @@ vite.config.ts.timestamp-*
 .superpowers/
 .worktrees/
 
-# Local verification screenshots
-event-*-settings.png
+# Local temporary contents
+.tmp/
