@@ -146,3 +146,6 @@ vite.config.ts.timestamp-*
 # Local brainstorming companion artifacts
 .superpowers/
 .worktrees/
+
+# Local verification screenshots
+event-*-settings.png
