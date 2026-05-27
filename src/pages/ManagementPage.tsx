@@ -1118,7 +1118,15 @@ function NumberInput({
   onChange: (value: number) => void;
   value: number;
 }) {
-  return <NumberField label={label} value={value} min={0} onChange={onChange} />;
+  return (
+    <NumberField
+      label={label}
+      value={value}
+      min={0}
+      showSteppers={false}
+      onChange={onChange}
+    />
+  );
 }
 
 function SelectField({

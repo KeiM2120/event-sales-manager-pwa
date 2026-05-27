@@ -24,6 +24,9 @@ describe("ManagementPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "頒布物を追加" }));
 
     const priceInput = screen.getByRole("spinbutton", { name: "価格" });
+    expect(screen.queryByRole("button", { name: "価格を減らす" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "価格を増やす" })).not.toBeInTheDocument();
+
     await userEvent.click(priceInput);
     await userEvent.type(priceInput, "1200");
 

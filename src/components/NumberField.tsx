@@ -5,6 +5,7 @@ interface NumberFieldProps {
   value: number;
   min?: number;
   max?: number;
+  showSteppers?: boolean;
   onChange: (value: number) => void;
 }
 
@@ -13,6 +14,7 @@ export function NumberField({
   value,
   min,
   max,
+  showSteppers = true,
   onChange,
 }: NumberFieldProps) {
   const inputId = useId();
@@ -44,16 +46,24 @@ export function NumberField({
       <label htmlFor={inputId} className="text-sm font-bold">
         {label}
       </label>
-      <div className="mt-1 grid grid-cols-[3rem_1fr_3rem] items-center gap-2">
-        <button
-          type="button"
-          aria-label={`${label}を減らす`}
-          disabled={decrementDisabled}
-          className="min-h-12 rounded-md border bg-white text-xl font-bold disabled:opacity-40"
-          onClick={() => onChange(clampValue(value - 1))}
-        >
-          -
-        </button>
+      <div
+        className={
+          showSteppers
+            ? "mt-1 grid grid-cols-[3rem_1fr_3rem] items-center gap-2"
+            : "mt-1"
+        }
+      >
+        {showSteppers ? (
+          <button
+            type="button"
+            aria-label={`${label}を減らす`}
+            disabled={decrementDisabled}
+            className="min-h-12 rounded-md border bg-white text-xl font-bold disabled:opacity-40"
+            onClick={() => onChange(clampValue(value - 1))}
+          >
+            -
+          </button>
+        ) : null}
         <input
           id={inputId}
           type="number"
@@ -73,17 +83,23 @@ export function NumberField({
             commitDraft(draft ?? String(value));
             setDraft(null);
           }}
-          className="min-h-12 rounded-md border px-3 text-center text-lg font-bold"
+          className={
+            showSteppers
+              ? "min-h-12 rounded-md border px-3 text-center text-lg font-bold"
+              : "min-h-12 w-full rounded-md border px-3"
+          }
         />
-        <button
-          type="button"
-          aria-label={`${label}を増やす`}
-          disabled={incrementDisabled}
-          className="min-h-12 rounded-md border bg-white text-xl font-bold disabled:opacity-40"
-          onClick={() => onChange(clampValue(value + 1))}
-        >
-          +
-        </button>
+        {showSteppers ? (
+          <button
+            type="button"
+            aria-label={`${label}を増やす`}
+            disabled={incrementDisabled}
+            className="min-h-12 rounded-md border bg-white text-xl font-bold disabled:opacity-40"
+            onClick={() => onChange(clampValue(value + 1))}
+          >
+            +
+          </button>
+        ) : null}
       </div>
     </div>
   );
