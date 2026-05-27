@@ -2,6 +2,7 @@ import { Children, useEffect, useState, type FormEvent, type ReactNode } from "r
 import { useLiveQuery } from "dexie-react-hooks";
 import { InlineActionButton, PrimaryActionBar, StatusChip } from "../components/DesignSystem";
 import { Modal } from "../components/Modal";
+import { NumberField } from "../components/NumberField";
 import { SectionTabs } from "../components/SectionTabs";
 import { db as appDatabase, type EventSalesDatabase } from "../db/database";
 import { calculateBundleAvailability } from "../domain/inventory";
@@ -1117,18 +1118,7 @@ function NumberInput({
   onChange: (value: number) => void;
   value: number;
 }) {
-  return (
-    <label className="block">
-      <span className="text-sm font-bold">{label}</span>
-      <input
-        type="number"
-        min="0"
-        value={value}
-        onChange={(event) => onChange(Number(event.currentTarget.value))}
-        className="mt-1 min-h-12 w-full rounded-md border px-3"
-      />
-    </label>
-  );
+  return <NumberField label={label} value={value} min={0} onChange={onChange} />;
 }
 
 function SelectField({
