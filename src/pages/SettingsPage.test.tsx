@@ -45,7 +45,9 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage database={database} eventId="event-1" />);
 
-    expect(screen.getByRole("heading", { name: "設定" })).toBeInTheDocument();
+    const title = screen.getByRole("heading", { name: "設定" });
+    expect(title).toBeInTheDocument();
+    expect(title.parentElement?.querySelector("p")).toBeNull();
     expect(screen.getByRole("heading", { name: "アプリ状態" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "CSV出力" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "危険操作" })).toBeInTheDocument();
@@ -78,7 +80,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage database={database} eventId={undefined} />);
 
     expect(screen.getByRole("heading", { name: "アプリ状態" })).toBeInTheDocument();
-    expect(screen.getByText("イベント未選択")).toBeInTheDocument();
+    expect(screen.queryByText("イベント未選択")).not.toBeInTheDocument();
 
     expect(screen.queryByRole("heading", { name: "CSV出力" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "危険操作" })).not.toBeInTheDocument();

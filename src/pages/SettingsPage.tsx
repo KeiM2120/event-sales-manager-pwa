@@ -185,7 +185,7 @@ export function SettingsPage({
 
   return (
     <div className="space-y-4">
-      <ScreenTitle subtitle={eventTargetLabel}>設定</ScreenTitle>
+      <ScreenTitle>設定</ScreenTitle>
 
       <SurfaceCard ariaLabel="アプリ状態" className="space-y-3">
         <h2 className="text-base font-bold text-[color:var(--color-text)]">
