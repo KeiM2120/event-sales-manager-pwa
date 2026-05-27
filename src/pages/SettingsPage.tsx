@@ -213,100 +213,104 @@ export function SettingsPage({
         ) : null}
       </SurfaceCard>
 
-      <SurfaceCard ariaLabel="CSV出力" className="space-y-3">
-        <div>
-          <h2 className="text-base font-bold text-[color:var(--color-text)]">
-            CSV出力
-          </h2>
-          <p className="mt-1 text-sm font-medium text-[color:var(--color-muted)]">
-            対象: {eventTargetLabel}
-          </p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {csvButtons.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              aria-label={item.label}
-              className="min-h-20 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left shadow-sm active:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-              disabled={!canUseEventExports}
-              onClick={item.onClick}
-            >
-              <span className="block text-base font-bold">{item.label}</span>
-              <span className="mt-1 block text-sm font-medium text-[color:var(--color-muted)]">
-                {item.description}
-              </span>
-            </button>
-          ))}
-        </div>
-      </SurfaceCard>
+      {hasSelectedEvent ? (
+        <>
+          <SurfaceCard ariaLabel="CSV出力" className="space-y-3">
+            <div>
+              <h2 className="text-base font-bold text-[color:var(--color-text)]">
+                CSV出力
+              </h2>
+              <p className="mt-1 text-sm font-medium text-[color:var(--color-muted)]">
+                対象: {eventTargetLabel}
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {csvButtons.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  aria-label={item.label}
+                  className="min-h-20 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left shadow-sm active:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                  disabled={!canUseEventExports}
+                  onClick={item.onClick}
+                >
+                  <span className="block text-base font-bold">{item.label}</span>
+                  <span className="mt-1 block text-sm font-medium text-[color:var(--color-muted)]">
+                    {item.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </SurfaceCard>
 
-      <SurfaceCard
-        ariaLabel="危険操作"
-        className="space-y-3 border border-[color:var(--color-error)] bg-red-50"
-      >
-        <h2 className="text-base font-bold text-[color:var(--color-error)]">
-          危険操作
-        </h2>
-        <p className="text-sm font-medium text-[color:var(--color-text)]">
-          選択中イベントの在庫・売上・経費をリセットします。実行前にCSV出力をおすすめしますが、必須ではありません。
-        </p>
-        <p className="text-sm font-bold text-[color:var(--color-text)]">
-          対象: {eventTargetLabel}
-        </p>
-
-        {!resetConfirmOpen ? (
-          <InlineActionButton
-            tone="danger"
-            disabled={!canResetSelectedEvent}
-            onClick={() => {
-              setResetConfirmOpen(true);
-              setResetMessage(null);
-            }}
+          <SurfaceCard
+            ariaLabel="危険操作"
+            className="space-y-3 border border-[color:var(--color-error)] bg-red-50"
           >
-            リセット確認へ
-          </InlineActionButton>
-        ) : (
-          <div className="rounded-lg border border-red-200 bg-white p-3">
+            <h2 className="text-base font-bold text-[color:var(--color-error)]">
+              危険操作
+            </h2>
+            <p className="text-sm font-medium text-[color:var(--color-text)]">
+              選択中イベントの在庫・売上・経費をリセットします。実行前にCSV出力をおすすめしますが、必須ではありません。
+            </p>
             <p className="text-sm font-bold text-[color:var(--color-text)]">
-              {eventTargetLabel}
+              対象: {eventTargetLabel}
             </p>
-            <p className="mt-2 text-sm font-semibold text-[color:var(--color-error)]">
-              リセット対象: 在庫・売上・経費
-            </p>
-            <p className="mt-1 text-sm font-semibold text-[color:var(--color-text)]">
-              残るデータ: イベント・頒布物・セット
-            </p>
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <InlineActionButton
-                tone="neutral"
-                disabled={resetPending}
-                onClick={() => setResetConfirmOpen(false)}
-              >
-                キャンセル
-              </InlineActionButton>
+
+            {!resetConfirmOpen ? (
               <InlineActionButton
                 tone="danger"
                 disabled={!canResetSelectedEvent}
-                onClick={handleResetSelectedEvent}
+                onClick={() => {
+                  setResetConfirmOpen(true);
+                  setResetMessage(null);
+                }}
               >
-                リセットする
+                リセット確認へ
               </InlineActionButton>
-            </div>
-          </div>
-        )}
+            ) : (
+              <div className="rounded-lg border border-red-200 bg-white p-3">
+                <p className="text-sm font-bold text-[color:var(--color-text)]">
+                  {eventTargetLabel}
+                </p>
+                <p className="mt-2 text-sm font-semibold text-[color:var(--color-error)]">
+                  リセット対象: 在庫・売上・経費
+                </p>
+                <p className="mt-1 text-sm font-semibold text-[color:var(--color-text)]">
+                  残るデータ: イベント・頒布物・セット
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <InlineActionButton
+                    tone="neutral"
+                    disabled={resetPending}
+                    onClick={() => setResetConfirmOpen(false)}
+                  >
+                    キャンセル
+                  </InlineActionButton>
+                  <InlineActionButton
+                    tone="danger"
+                    disabled={!canResetSelectedEvent}
+                    onClick={handleResetSelectedEvent}
+                  >
+                    リセットする
+                  </InlineActionButton>
+                </div>
+              </div>
+            )}
 
-        {resetMessage ? (
-          <p
-            className={`text-sm font-bold ${
-              resetMessage.kind === "success" ? "text-green-700" : "text-red-700"
-            }`}
-            role="status"
-          >
-            {resetMessage.text}
-          </p>
-        ) : null}
-      </SurfaceCard>
+            {resetMessage ? (
+              <p
+                className={`text-sm font-bold ${
+                  resetMessage.kind === "success" ? "text-green-700" : "text-red-700"
+                }`}
+                role="status"
+              >
+                {resetMessage.text}
+              </p>
+            ) : null}
+          </SurfaceCard>
+        </>
+      ) : null}
     </div>
   );
 }
