@@ -55,11 +55,11 @@ describe("basic components", () => {
     expect(modal.querySelector(".overflow-y-auto")).toHaveTextContent("本文");
     await userEvent.click(screen.getByRole("button", { name: "閉じる" }));
     await userEvent.click(screen.getByRole("button", { name: "実行" }));
-    await userEvent.click(screen.getByRole("button", { name: "数量を増やす" }));
+    expect(screen.queryByRole("button", { name: "数量を減らす" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "数量を増やす" })).not.toBeInTheDocument();
 
     expect(onClose).toHaveBeenCalled();
     expect(onConfirm).toHaveBeenCalled();
-    expect(onChange).toHaveBeenCalledWith(2);
   });
 
   it("lets zero-valued number fields be replaced without keeping the leading zero", async () => {

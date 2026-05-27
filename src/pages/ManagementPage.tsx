@@ -1119,13 +1119,7 @@ function NumberInput({
   value: number;
 }) {
   return (
-    <NumberField
-      label={label}
-      value={value}
-      min={0}
-      showSteppers={false}
-      onChange={onChange}
-    />
+    <NumberField label={label} value={value} min={0} onChange={onChange} />
   );
 }
 
