@@ -79,9 +79,11 @@ describe("App", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "設定" }));
 
-    expect(await screen.findByRole("heading", { name: "設定" })).toBeInTheDocument();
+    const title = await screen.findByRole("heading", { name: "設定" });
+    expect(title).toBeInTheDocument();
+    expect(title.parentElement?.querySelector("p")).toBeNull();
     expect(screen.getByRole("heading", { name: "アプリ状態" })).toBeInTheDocument();
-    expect(screen.getByText("イベント未選択")).toBeInTheDocument();
+    expect(screen.queryByText("イベント未選択")).not.toBeInTheDocument();
   });
 
   it("uses the selected event for checkout navigation guards", async () => {
