@@ -27,7 +27,7 @@ describe("ManagementPage", () => {
     await userEvent.click(priceInput);
     await userEvent.type(priceInput, "1200");
 
-    expect(priceInput).toHaveValue(1200);
+    expect(priceInput).toHaveDisplayValue("1200");
   });
 
   it("shows list-first management tabs and opens the product modal from the fixed add button", async () => {
