@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -60,6 +60,43 @@ describe("basic components", () => {
     expect(onClose).toHaveBeenCalled();
     expect(onConfirm).toHaveBeenCalled();
     expect(onChange).toHaveBeenCalledWith(2);
+  });
+
+  it("lets zero-valued number fields be replaced without keeping the leading zero", async () => {
+    const onChange = vi.fn();
+
+    render(<NumberField label="価格" value={0} min={0} onChange={onChange} />);
+
+    const input = screen.getByRole("spinbutton", { name: "価格" });
+
+    await userEvent.click(input);
+    expect(input).toHaveValue(null);
+
+    await userEvent.type(input, "1200");
+
+    expect(onChange).toHaveBeenLastCalledWith(1200);
+    expect(input).toHaveValue(1200);
+  });
+
+  it("normalizes an empty number field on blur", async () => {
+    const onChange = vi.fn();
+
+    const { rerender } = render(
+      <NumberField label="取り置き数" value={0} min={0} onChange={onChange} />,
+    );
+
+    const input = screen.getByRole("spinbutton", { name: "取り置き数" });
+
+    await userEvent.click(input);
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith(0);
+
+    rerender(<NumberField label="取り置き数" value={0} min={0} onChange={onChange} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("spinbutton", { name: "取り置き数" })).toHaveValue(0);
+    });
   });
 
   it("renders design system cards and status chips with accessible labels", () => {
