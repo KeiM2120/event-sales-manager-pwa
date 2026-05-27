@@ -78,24 +78,44 @@ describe("basic components", () => {
     expect(input).toHaveValue(1200);
   });
 
-  it("normalizes an empty number field on blur", async () => {
+  it("normalizes an empty number field on blur to a non-zero minimum", async () => {
     const onChange = vi.fn();
 
     const { rerender } = render(
-      <NumberField label="取り置き数" value={0} min={0} onChange={onChange} />,
+      <NumberField label="取り置き数" value={5} min={3} onChange={onChange} />,
     );
 
     const input = screen.getByRole("spinbutton", { name: "取り置き数" });
+
+    await userEvent.click(input);
+    await userEvent.clear(input);
+    await userEvent.tab();
+
+    expect(onChange).toHaveBeenLastCalledWith(3);
+
+    rerender(<NumberField label="取り置き数" value={3} min={3} onChange={onChange} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("spinbutton", { name: "取り置き数" })).toHaveValue(3);
+    });
+  });
+
+  it("normalizes an empty number field on blur to zero when minimum is omitted", async () => {
+    const onChange = vi.fn();
+
+    const { rerender } = render(<NumberField label="追加数" value={0} onChange={onChange} />);
+
+    const input = screen.getByRole("spinbutton", { name: "追加数" });
 
     await userEvent.click(input);
     await userEvent.tab();
 
     expect(onChange).toHaveBeenLastCalledWith(0);
 
-    rerender(<NumberField label="取り置き数" value={0} min={0} onChange={onChange} />);
+    rerender(<NumberField label="追加数" value={0} onChange={onChange} />);
 
     await waitFor(() => {
-      expect(screen.getByRole("spinbutton", { name: "取り置き数" })).toHaveValue(0);
+      expect(screen.getByRole("spinbutton", { name: "追加数" })).toHaveValue(0);
     });
   });
 
