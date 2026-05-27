@@ -116,8 +116,8 @@ function App({ database = appDatabase }: AppProps) {
           notice={managementNotice}
         />
       )}
-      {screen === "settings" && effectiveSelectedEventId !== null && (
-        <SettingsPage database={database} eventId={effectiveSelectedEventId} />
+      {screen === "settings" && (
+        <SettingsPage database={database} eventId={effectiveSelectedEventId ?? undefined} />
       )}
     </AppShell>
   );

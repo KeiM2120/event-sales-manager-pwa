@@ -67,8 +67,28 @@ describe("SettingsPage", () => {
     expect(update).toHaveBeenCalledOnce();
   });
 
+  it("keeps event-scoped settings actions disabled without a selected event", async () => {
+    render(<SettingsPage database={database} eventId={undefined} />);
+
+    expect(screen.getByRole("heading", { name: "アプリ状態" })).toBeInTheDocument();
+    expect(screen.getByText("イベント未選択")).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "売上サマリーCSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "売上詳細CSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "頒布物移動CSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "経費CSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "収支CSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "リセット確認へ" })).toBeDisabled();
+  });
+
   it("exports five selected-event CSV files from saved data", async () => {
     const downloader = vi.fn();
+    await database.events.put({
+      id: "event-1",
+      name: "コミティア150",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
     await database.sales.bulkPut([
       {
         id: "sale-1",

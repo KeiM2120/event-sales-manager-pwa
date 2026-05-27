@@ -74,6 +74,16 @@ describe("App", () => {
     expect(screen.getByText("イベントを登録すると会計を開始できます。")).toBeInTheDocument();
   });
 
+  it("shows settings app state when no event is registered", async () => {
+    render(<App database={database} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "設定" }));
+
+    expect(await screen.findByRole("heading", { name: "設定" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "アプリ状態" })).toBeInTheDocument();
+    expect(screen.getByText("イベント未選択")).toBeInTheDocument();
+  });
+
   it("uses the selected event for checkout navigation guards", async () => {
     await database.events.bulkPut([
       { id: "event-1", name: "イベント1", eventDate: "2026-11-23", series: "other" },

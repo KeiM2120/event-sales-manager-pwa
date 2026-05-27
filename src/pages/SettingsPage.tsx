@@ -41,7 +41,7 @@ const appVersion = import.meta.env.VITE_APP_VERSION ?? "0.1.0";
 export function SettingsPage({
   database = appDatabase,
   downloader,
-  eventId = "event-1",
+  eventId,
   resetOperationalData = resetSelectedEventOperationalData,
 }: SettingsPageProps) {
   const pwa = usePwaUpdate();
@@ -64,22 +64,36 @@ export function SettingsPage({
   const sales = salesQuery ?? [];
   const expenses = expensesQuery ?? [];
   const csvLoaded = salesQuery !== undefined && expensesQuery !== undefined;
-  const selectedEvent = events.find((event) => event.id === eventId);
-  const eventSales = sales.filter((sale) => sale.eventId === eventId);
-  const eventExpenses = expenses.filter((expense) => expense.eventId === eventId);
-  const eventStats = calculateEventStats({ eventId, sales, expenses });
-  const canResetSelectedEvent = selectedEvent !== undefined && !resetPending;
+  const selectedEvent =
+    eventId === undefined ? undefined : events.find((event) => event.id === eventId);
+  const selectedEventId = selectedEvent?.id;
+  const eventTargetLabel = selectedEvent?.name ?? "イベント未選択";
+  const eventSales =
+    selectedEventId === undefined
+      ? []
+      : sales.filter((sale) => sale.eventId === selectedEventId);
+  const eventExpenses =
+    selectedEventId === undefined
+      ? []
+      : expenses.filter((expense) => expense.eventId === selectedEventId);
+  const eventStats =
+    selectedEventId === undefined
+      ? calculateEventStats({ eventId: "", sales: [], expenses: [] })
+      : calculateEventStats({ eventId: selectedEventId, sales, expenses });
+  const hasSelectedEvent = selectedEventId !== undefined;
+  const canUseEventExports = csvLoaded && hasSelectedEvent;
+  const canResetSelectedEvent = hasSelectedEvent && !resetPending;
   const csvButtons: CsvButton[] = [
     {
       label: "売上サマリーCSV",
       description: "会計単位の合計金額と点数",
       onClick: () => {
-        if (!csvLoaded) {
+        if (!canUseEventExports || !selectedEventId) {
           return;
         }
         downloadSalesSummaryCsv(eventSales, {
           downloader,
-          filename: `sales-summary-${eventId}.csv`,
+          filename: `sales-summary-${selectedEventId}.csv`,
         });
       },
     },
@@ -87,12 +101,12 @@ export function SettingsPage({
       label: "売上詳細CSV",
       description: "明細行と頒布物スナップショット",
       onClick: () => {
-        if (!csvLoaded) {
+        if (!canUseEventExports || !selectedEventId) {
           return;
         }
         downloadSalesDetailCsv(eventSales, {
           downloader,
-          filename: `sales-detail-${eventId}.csv`,
+          filename: `sales-detail-${selectedEventId}.csv`,
         });
       },
     },
@@ -100,12 +114,12 @@ export function SettingsPage({
       label: "頒布物移動CSV",
       description: "セットを頒布物単位に展開",
       onClick: () => {
-        if (!csvLoaded) {
+        if (!canUseEventExports || !selectedEventId) {
           return;
         }
         downloadProductMovementCsv(eventSales, {
           downloader,
-          filename: `product-movement-${eventId}.csv`,
+          filename: `product-movement-${selectedEventId}.csv`,
         });
       },
     },
@@ -113,12 +127,12 @@ export function SettingsPage({
       label: "経費CSV",
       description: "選択中イベントの経費一覧",
       onClick: () => {
-        if (!csvLoaded) {
+        if (!canUseEventExports || !selectedEventId) {
           return;
         }
         downloadExpensesCsv(eventExpenses, {
           downloader,
-          filename: `expenses-${eventId}.csv`,
+          filename: `expenses-${selectedEventId}.csv`,
         });
       },
     },
@@ -126,7 +140,7 @@ export function SettingsPage({
       label: "収支CSV",
       description: "売上・経費・利益と経費カテゴリ別集計",
       onClick: () => {
-        if (!csvLoaded) {
+        if (!canUseEventExports || !selectedEventId) {
           return;
         }
         downloadProfitLossCsv(
@@ -138,7 +152,7 @@ export function SettingsPage({
           },
           {
             downloader,
-            filename: `profit-loss-${eventId}.csv`,
+            filename: `profit-loss-${selectedEventId}.csv`,
           },
         );
       },
@@ -171,7 +185,7 @@ export function SettingsPage({
 
   return (
     <div className="space-y-4">
-      <ScreenTitle subtitle={selectedEvent?.name ?? "イベント未選択"}>設定</ScreenTitle>
+      <ScreenTitle subtitle={eventTargetLabel}>設定</ScreenTitle>
 
       <SurfaceCard ariaLabel="アプリ状態" className="space-y-3">
         <h2 className="text-base font-bold text-[color:var(--color-text)]">
@@ -205,7 +219,7 @@ export function SettingsPage({
             CSV出力
           </h2>
           <p className="mt-1 text-sm font-medium text-[color:var(--color-muted)]">
-            対象: {selectedEvent?.name ?? eventId}
+            対象: {eventTargetLabel}
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -215,7 +229,7 @@ export function SettingsPage({
               type="button"
               aria-label={item.label}
               className="min-h-20 rounded-lg border border-slate-200 bg-white px-4 py-3 text-left shadow-sm active:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-              disabled={!csvLoaded}
+              disabled={!canUseEventExports}
               onClick={item.onClick}
             >
               <span className="block text-base font-bold">{item.label}</span>
@@ -238,13 +252,13 @@ export function SettingsPage({
           選択中イベントの在庫・売上・経費をリセットします。実行前にCSV出力をおすすめしますが、必須ではありません。
         </p>
         <p className="text-sm font-bold text-[color:var(--color-text)]">
-          対象: {selectedEvent?.name ?? "イベント未選択"}
+          対象: {eventTargetLabel}
         </p>
 
         {!resetConfirmOpen ? (
           <InlineActionButton
             tone="danger"
-            disabled={selectedEvent === undefined}
+            disabled={!canResetSelectedEvent}
             onClick={() => {
               setResetConfirmOpen(true);
               setResetMessage(null);
@@ -255,7 +269,7 @@ export function SettingsPage({
         ) : (
           <div className="rounded-lg border border-red-200 bg-white p-3">
             <p className="text-sm font-bold text-[color:var(--color-text)]">
-              {selectedEvent?.name ?? "イベント未選択"}
+              {eventTargetLabel}
             </p>
             <p className="mt-2 text-sm font-semibold text-[color:var(--color-error)]">
               リセット対象: 在庫・売上・経費
