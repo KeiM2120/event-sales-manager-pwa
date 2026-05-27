@@ -18,6 +18,21 @@ describe("ManagementPage", () => {
     database.close();
   });
 
+  it("replaces zero in management number inputs instead of appending after it", async () => {
+    render(<ManagementPage database={database} initialSection="products" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "頒布物を追加" }));
+
+    const priceInput = screen.getByRole("spinbutton", { name: "価格" });
+    expect(screen.queryByRole("button", { name: "価格を減らす" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "価格を増やす" })).not.toBeInTheDocument();
+
+    await userEvent.click(priceInput);
+    await userEvent.type(priceInput, "1200");
+
+    expect(priceInput).toHaveDisplayValue("1200");
+  });
+
   it("shows list-first management tabs and opens the product modal from the fixed add button", async () => {
     render(<ManagementPage database={database} />);
 

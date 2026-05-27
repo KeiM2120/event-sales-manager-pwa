@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventSalesDatabase } from "../db/database";
@@ -35,12 +35,21 @@ describe("SettingsPage", () => {
     database.close();
   });
 
-  it("shows app state, CSV export, and dangerous operation sections", () => {
-    render(<SettingsPage />);
+  it("shows app state, CSV export, and dangerous operation sections for a selected event", async () => {
+    await database.events.put({
+      id: "event-1",
+      name: "コミティア150",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
 
-    expect(screen.getByRole("heading", { name: "設定" })).toBeInTheDocument();
+    render(<SettingsPage database={database} eventId="event-1" />);
+
+    const title = screen.getByRole("heading", { name: "設定" });
+    expect(title).toBeInTheDocument();
+    expect(title.parentElement?.querySelector("p")).toBeNull();
     expect(screen.getByRole("heading", { name: "アプリ状態" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "CSV出力" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "CSV出力" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "危険操作" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "売上サマリーCSV" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "売上詳細CSV" })).toBeInTheDocument();
@@ -67,8 +76,26 @@ describe("SettingsPage", () => {
     expect(update).toHaveBeenCalledOnce();
   });
 
+  it("hides event-scoped settings actions without a selected event", async () => {
+    render(<SettingsPage database={database} eventId={undefined} />);
+
+    expect(screen.getByRole("heading", { name: "アプリ状態" })).toBeInTheDocument();
+    expect(screen.queryByText("イベント未選択")).not.toBeInTheDocument();
+
+    expect(screen.queryByRole("heading", { name: "CSV出力" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "危険操作" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "売上サマリーCSV" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "リセット確認へ" })).not.toBeInTheDocument();
+  });
+
   it("exports five selected-event CSV files from saved data", async () => {
     const downloader = vi.fn();
+    await database.events.put({
+      id: "event-1",
+      name: "コミティア150",
+      eventDate: "2026-11-23",
+      series: "other",
+    });
     await database.sales.bulkPut([
       {
         id: "sale-1",
@@ -138,12 +165,10 @@ describe("SettingsPage", () => {
       <SettingsPage database={database} eventId="event-1" downloader={downloader} />,
     );
 
-    const salesSummaryButton = screen.getByRole("button", {
+    const salesSummaryButton = await screen.findByRole("button", {
       name: "売上サマリーCSV",
     });
-    expect(salesSummaryButton).toBeDisabled();
-
-    await waitFor(() => expect(salesSummaryButton).toBeEnabled());
+    expect(salesSummaryButton).toBeEnabled();
 
     await userEvent.click(salesSummaryButton);
     await userEvent.click(screen.getByRole("button", { name: "売上詳細CSV" }));
